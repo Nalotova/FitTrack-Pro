@@ -45,15 +45,21 @@
     },
     "WeightMeasurement": {
       "title": "Weight Measurement",
-      "description": "User's body weight and composition data.",
+      "description": "User's body weight and composition data including centimeter measurements.",
       "type": "object",
       "properties": {
         "userId": { "type": "string" },
         "date": { "type": "string", "format": "date-time" },
         "weight": { "type": "number" },
+        "age": { "type": "number", "description": "User's age at the time of measurement." },
         "fat": { "type": "number" },
         "muscle": { "type": "number" },
-        "water": { "type": "number" }
+        "water": { "type": "number" },
+        "chest": { "type": "number", "description": "Chest measurement in cm." },
+        "waist": { "type": "number", "description": "Waist measurement in cm." },
+        "hips": { "type": "number", "description": "Hips measurement in cm." },
+        "bicep": { "type": "number", "description": "Bicep measurement in cm." },
+        "thigh": { "type": "number", "description": "Thigh measurement in cm." }
       },
       "required": ["userId", "date", "weight"]
     },

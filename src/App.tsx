@@ -7,6 +7,9 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Plus, 
   Trash2, 
+  Edit2,
+  Check,
+  AlertCircle,
   Dumbbell, 
   Calendar, 
   ChevronRight, 
@@ -27,9 +30,16 @@ import {
   ChevronDown,
   Download,
   Upload,
-  AlertTriangle
+  AlertTriangle,
+  Bot,
+  Sparkles,
+  MessageSquare,
+  Image as ImageIcon,
+  Camera,
+  Settings
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { GoogleGenAI, Type } from "@google/genai";
 import { 
   LineChart, 
   Line, 
@@ -55,6 +65,7 @@ import {
   where, 
   onSnapshot, 
   setDoc, 
+  getDoc,
   doc, 
   deleteDoc, 
   addDoc,
@@ -88,9 +99,15 @@ interface WeightMeasurement {
   userId: string;
   date: string;
   weight: number;
+  age?: number;
   fat?: number;
   muscle?: number;
   water?: number;
+  chest?: number;
+  waist?: number;
+  hips?: number;
+  bicep?: number;
+  thigh?: number;
 }
 
 interface StrengthRecord {
@@ -228,11 +245,14 @@ class ErrorBoundary extends React.Component<any, any> {
 // Main App Component
 function AppContent() {
   const [user, setUser] = useState<User | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [measurements, setMeasurements] = useState<WeightMeasurement[]>([]);
   const [strengthRecords, setStrengthRecords] = useState<StrengthRecord[]>([]);
-  const [activeTab, setActiveTab] = useState<'today' | 'progress' | 'strength' | 'weight' | 'tech'>('today');
+  const [activeTab, setActiveTab] = useState<'today' | 'progress' | 'strength' | 'tech' | 'coach' | 'profile'>('today');
+  const [coachMessages, setCoachMessages] = useState<any[]>([]);
+  const [isCoachLoading, setIsCoachLoading] = useState(false);
   
   // Today's state
   const [currentDay, setCurrentDay] = useState('День 1');
@@ -244,13 +264,27 @@ function AppContent() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
-      setLoading(false);
-      if (currentUser) {
+      if (!currentUser) {
+        setUserProfile(null);
+        setLoading(false);
+      } else {
         syncUserProfile(currentUser);
       }
     });
     return () => unsubscribe();
   }, []);
+
+  // Profile Listener
+  useEffect(() => {
+    if (!user) return;
+    const unsubProfile = onSnapshot(doc(db, 'users', user.uid), (snapshot) => {
+      if (snapshot.exists()) {
+        setUserProfile(snapshot.data() as UserProfile);
+      }
+      setLoading(false);
+    });
+    return () => unsubProfile();
+  }, [user]);
 
   // Data Listeners
   useEffect(() => {
@@ -298,14 +332,35 @@ function AppContent() {
   const syncUserProfile = async (currentUser: User) => {
     const userRef = doc(db, 'users', currentUser.uid);
     try {
-      await setDoc(userRef, {
-        displayName: currentUser.displayName || 'Анонимный пользователь',
-        email: currentUser.email || '',
-        photoURL: currentUser.photoURL || '',
-        role: 'user'
-      }, { merge: true });
+      const docSnap = await getDoc(userRef);
+      if (!docSnap.exists()) {
+        await setDoc(userRef, {
+          displayName: currentUser.displayName || 'Анонимный пользователь',
+          email: currentUser.email || '',
+          photoURL: currentUser.photoURL || '',
+          role: 'user',
+          createdAt: new Date().toISOString()
+        });
+      } else {
+        // Just update email if it changed, but don't touch displayName/photoURL
+        await setDoc(userRef, {
+          email: currentUser.email || ''
+        }, { merge: true });
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `users/${currentUser.uid}`);
+    }
+  };
+
+  const handleUpdateProfile = async (data: Partial<UserProfile>) => {
+    if (!user) return;
+    try {
+      await setDoc(doc(db, 'users', user.uid), data, { merge: true });
+      // Removed alert for better mobile/iframe compatibility
+      return Promise.resolve();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}`);
+      return Promise.reject(error);
     }
   };
 
@@ -395,6 +450,31 @@ function AppContent() {
     }
   };
 
+  const handleUpdateWorkout = async (id: string, data: Partial<Workout>) => {
+    try {
+      await setDoc(doc(db, 'workouts', id), data, { merge: true });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `workouts/${id}`);
+    }
+  };
+
+  const handleDeleteStrength = async (id: string) => {
+    if (!confirm('Вы уверены, что хотите удалить эту запись?')) return;
+    try {
+      await deleteDoc(doc(db, 'strength', id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `strength/${id}`);
+    }
+  };
+
+  const handleUpdateStrength = async (id: string, data: Partial<StrengthRecord>) => {
+    try {
+      await setDoc(doc(db, 'strength', id), data, { merge: true });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `strength/${id}`);
+    }
+  };
+
   // Stats
   const streakWeeks = useMemo(() => {
     if (workouts.length === 0) return 0;
@@ -418,19 +498,23 @@ function AppContent() {
     if (!user) return;
     try {
       const exportObj = {
+        profile: userProfile,
         workouts,
         measurements,
-        strengthRecords
+        strengthRecords,
+        exportDate: new Date().toISOString(),
+        version: "1.1"
       };
       const blob = new Blob([JSON.stringify(exportObj, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `fittrack_backup_${format(new Date(), 'dd-MM-yyyy')}.json`;
+      a.download = `fittrack_full_backup_${format(new Date(), 'dd-MM-yyyy')}.json`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (error) {
       console.error("Export failed:", error);
+      alert('Ошибка при экспорте данных.');
     }
   };
 
@@ -442,34 +526,81 @@ function AppContent() {
       try {
         const imported = JSON.parse(e.target.result as string);
         
+        let count = 0;
+
+        // Import profile
+        if (imported.profile) {
+          await handleUpdateProfile(imported.profile);
+          count++;
+        }
+
+        // Flexible import logic for other data
+        const workoutsToImport = imported.workouts || (Array.isArray(imported) && imported[0]?.exercises ? imported : []);
+        const measurementsToImport = imported.measurements || imported.weights || (Array.isArray(imported) && imported[0]?.weight ? imported : []);
+        const strengthToImport = imported.strengthRecords || imported.strength || (Array.isArray(imported) && imported[0]?.exercise ? imported : []);
+
         // Import workouts
-        if (imported.workouts) {
-          for (const w of imported.workouts) {
-            const { id, ...data } = w;
-            await addDoc(collection(db, 'workouts'), { ...data, userId: user.uid });
+        if (workoutsToImport.length > 0) {
+          for (const w of workoutsToImport) {
+            const { id, sets, notes, ...data } = w;
+            
+            // Transform if it's the old format (sets as object, no exercises array)
+            let workoutToSave: any = { ...data, userId: user.uid };
+            
+            if (w.sets && !w.exercises && w.day && (PROGRAM as any)[w.day]) {
+              const program = (PROGRAM as any)[w.day];
+              workoutToSave.exercises = program.exercises.map((ex: any, i: number) => {
+                const rawSets = w.sets[i] || [];
+                return {
+                  name: ex.name,
+                  sets: rawSets.map((s: any) => ({
+                    weight: Number(s[0]) || 0,
+                    reps: Number(s[1]) || 0
+                  }))
+                };
+              });
+              workoutToSave.notes = typeof w.notes === 'object' ? Object.values(w.notes).join('\n') : (w.notes || '');
+            } else if (w.exercises) {
+              // Already has exercises, just use them
+              workoutToSave.exercises = w.exercises;
+              workoutToSave.notes = typeof w.notes === 'object' ? Object.values(w.notes).join('\n') : (w.notes || '');
+            } else {
+              // Fallback for unknown structure
+              workoutToSave.exercises = [];
+              workoutToSave.notes = '';
+            }
+
+            await addDoc(collection(db, 'workouts'), workoutToSave);
+            count++;
           }
         }
         
         // Import measurements
-        if (imported.measurements) {
-          for (const m of imported.measurements) {
+        if (measurementsToImport.length > 0) {
+          for (const m of measurementsToImport) {
             const { id, ...data } = m;
             await addDoc(collection(db, 'measurements'), { ...data, userId: user.uid });
+            count++;
           }
         }
 
         // Import strength
-        if (imported.strengthRecords) {
-          for (const s of imported.strengthRecords) {
+        if (strengthToImport.length > 0) {
+          for (const s of strengthToImport) {
             const { id, ...data } = s;
             await addDoc(collection(db, 'strength'), { ...data, userId: user.uid });
+            count++;
           }
         }
 
-        alert('✓ Бэкап загружен! Данные импортированы в облако.');
+        if (count > 0) {
+          alert(`✓ Импорт завершен! Загружено записей: ${count}`);
+        } else {
+          alert('⚠ Файл распознан, но данных для импорта не найдено. Проверьте структуру JSON.');
+        }
       } catch (error) {
         console.error("Import failed:", error);
-        alert('Ошибка при импорте данных.');
+        alert('Ошибка при импорте данных. Убедитесь, что файл имеет формат JSON.');
       }
     };
     reader.readAsText(file);
@@ -496,7 +627,7 @@ function AppContent() {
           animate={{ opacity: 1, scale: 1 }}
           className="max-w-md w-full bg-white p-10 rounded-[40px] shadow-2xl border border-border"
         >
-          <div className="logo text-5xl mb-4 font-display font-bold text-accent">Таня <span className="text-accent-2">·</span> Тренировки</div>
+          <div className="logo text-5xl mb-4 font-display font-bold text-accent">FitTrack-Pro <span className="text-accent-2">·</span> Тренировки</div>
           <p className="text-muted mb-10 text-lg font-medium">Твой личный фитнес-дневник для сияющих результатов! ✨</p>
           
           <div className="space-y-4">
@@ -519,9 +650,23 @@ function AppContent() {
       {/* Header */}
       <header className="header p-8 border-b border-border sticky top-0 bg-bg/80 backdrop-blur-md z-40">
         <div className="flex justify-between items-start mb-6">
-          <div>
-            <div className="logo text-2xl font-display font-bold text-accent">Таня <span className="text-accent-2">·</span> Тренировки</div>
-            <div className="text-[10px] text-muted uppercase font-semibold tracking-[0.15em] mt-1">{weekLabel}</div>
+          <div className="flex items-center gap-3">
+            <div 
+              className="w-10 h-10 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent overflow-hidden cursor-pointer"
+              onClick={() => setActiveTab('profile')}
+            >
+              {userProfile?.photoURL ? (
+                <img src={userProfile.photoURL} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              ) : (
+                <UserIcon size={20} />
+              )}
+            </div>
+            <div>
+              <div className="logo text-xl font-display font-bold text-accent leading-none">
+                {userProfile?.displayName || 'Таня'} <span className="text-accent-2">·</span> Тренировки
+              </div>
+              <div className="text-[10px] text-muted uppercase font-semibold tracking-[0.15em] mt-1">{weekLabel}</div>
+            </div>
           </div>
           <div className="text-right">
             <div className="text-4xl font-display font-bold text-accent leading-none">{streakWeeks}</div>
@@ -531,9 +676,9 @@ function AppContent() {
         
         <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
           <NavTab active={activeTab === 'today'} onClick={() => setActiveTab('today')} label="Сегодня" />
+          <NavTab active={activeTab === 'coach'} onClick={() => setActiveTab('coach')} label="ИИ Тренер" />
           <NavTab active={activeTab === 'progress'} onClick={() => setActiveTab('progress')} label="История" />
           <NavTab active={activeTab === 'strength'} onClick={() => setActiveTab('strength')} label="Веса" />
-          <NavTab active={activeTab === 'weight'} onClick={() => setActiveTab('weight')} label="Замеры" />
           <NavTab active={activeTab === 'tech'} onClick={() => setActiveTab('tech')} label="Техника" />
         </div>
       </header>
@@ -555,22 +700,45 @@ function AppContent() {
               workouts={workouts}
             />
           )}
+          {activeTab === 'coach' && (
+            <CoachPage 
+              workouts={workouts} 
+              measurements={measurements} 
+              strengthRecords={strengthRecords}
+              messages={coachMessages}
+              setMessages={setCoachMessages}
+              isLoading={isCoachLoading}
+              setIsLoading={setIsCoachLoading}
+            />
+          )}
           {activeTab === 'progress' && (
-            <ProgressPage workouts={workouts} />
+            <ProgressPage 
+              workouts={workouts} 
+              onDelete={handleDeleteWorkout}
+              onUpdate={handleUpdateWorkout}
+            />
           )}
           {activeTab === 'strength' && (
-            <StrengthPage records={strengthRecords} onSave={handleSaveStrength} />
-          )}
-          {activeTab === 'weight' && (
-            <WeightPage 
-              measurements={measurements} 
-              onSave={handleSaveWeight} 
-              onExport={handleExportData}
-              onImport={handleImportData}
+            <StrengthPage 
+              records={strengthRecords} 
+              onSave={handleSaveStrength}
+              onDelete={handleDeleteStrength}
+              onUpdate={handleUpdateStrength}
             />
           )}
           {activeTab === 'tech' && (
             <TechPage />
+          )}
+          {activeTab === 'profile' && (
+            <ProfilePage 
+              profile={userProfile} 
+              onUpdate={handleUpdateProfile} 
+              onLogout={handleLogout}
+              measurements={measurements}
+              onSaveWeight={handleSaveWeight}
+              onExportData={handleExportData}
+              onImportData={handleImportData}
+            />
           )}
         </AnimatePresence>
       </main>
@@ -588,8 +756,512 @@ function AppContent() {
   );
 }
 
-// --- SUB-COMPONENTS ---
+// --- COACH PAGE ---
 
+function CoachPage({ 
+  workouts, 
+  measurements, 
+  strengthRecords,
+  messages,
+  setMessages,
+  isLoading,
+  setIsLoading
+}: any) {
+  const [input, setInput] = useState('');
+  const [images, setImages] = useState<string[]>([]);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const apiKey = process.env.GEMINI_API_KEY || 
+                 (import.meta as any).env?.VITE_GEMINI_API_KEY || 
+                 process.env.GEMINI_API_KEY_2 || 
+                 (import.meta as any).env?.VITE_GEMINI_API_KEY_2;
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages]);
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files) {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (file) {
+          // Check size - limit to 1MB for Firestore base64 safety
+          if (file.size > 1024 * 1024) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              const img = new Image();
+              img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+                const max = 800;
+                if (width > height) {
+                  if (width > max) {
+                    height *= max / width;
+                    width = max;
+                  }
+                } else {
+                  if (height > max) {
+                    width *= max / height;
+                    height = max;
+                  }
+                }
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx?.drawImage(img, 0, 0, width, height);
+                setImages(prev => [...prev, canvas.toDataURL('image/jpeg', 0.7)]);
+              };
+              img.src = event.target?.result as string;
+            };
+            reader.readAsDataURL(file);
+          } else {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              setImages(prev => [...prev, event.target?.result as string]);
+            };
+            reader.readAsDataURL(file);
+          }
+        }
+      }
+    }
+  };
+
+  const handleSend = async (customInput?: string) => {
+    const textToSend = customInput || input;
+    if ((!textToSend.trim() && images.length === 0) || isLoading) return;
+
+    const userMsg: any = { role: 'user', content: textToSend };
+    if (images.length > 0) userMsg.images = images;
+
+    const newMessages = [...messages, userMsg];
+    setMessages(newMessages);
+    setInput('');
+    setImages([]);
+    setIsLoading(true);
+
+    try {
+      const currentApiKey = process.env.GEMINI_API_KEY || 
+                           (import.meta as any).env?.VITE_GEMINI_API_KEY || 
+                           process.env.GEMINI_API_KEY_2 || 
+                           (import.meta as any).env?.VITE_GEMINI_API_KEY_2;
+      
+      if (!currentApiKey) {
+        throw new Error("API key is missing");
+      }
+      
+      const ai = new GoogleGenAI({ apiKey: currentApiKey });
+      
+      const parts: any[] = [
+        { text: `Ты — экспертный ИИ-фитнес-тренер. Твоя задача — проводить объективный и конструктивный анализ данных пользователя.
+        
+        ПРАВИЛА ОТВЕТА (КРИТИЧЕСКИ ВАЖНО):
+        1. ЧИТАБЕЛЬНОСТЬ: Обязательно используй ПУСТЫЕ СТРОКИ между разделами и пунктами.
+        2. СТРУКТУРА: Используй четкие заголовки (### Название раздела).
+        3. ЛАКОНИЧНОСТЬ: Минимум вводных слов, только факты и цифры.
+        4. ОФОРМЛЕНИЕ: Не выделяй жирным всё подряд. Только ключевые цифры или термины.
+        5. ОБЪЕКТИВНОСТЬ: Опирайся строго на предоставленные переменные.
+        
+        ПЕРЕМЕННЫЕ ПОЛЬЗОВАТЕЛЯ:
+        - ТРЕНИРОВКИ (workouts): ${JSON.stringify(workouts.slice(-10))}
+        - ЗАМЕРЫ (measurements): ${JSON.stringify(measurements.slice(-10))} (вес, возраст, параметры)
+        - СИЛОВЫЕ РЕКОРДЫ (strengthRecords): ${JSON.stringify(strengthRecords)}
+        
+        ПРИОРИТЕТЫ АНАЛИЗА:
+        1. ВОЗРАСТ (из замеров): Адаптация нагрузок и восстановления.
+        2. КОМПЛЕКЦИЯ: Вес, % жира, замеры.
+        3. ПРОГРЕССИЯ: Сравнение последних тренировок.
+        
+        История чата:
+        ${messages.map((m: any) => `${m.role === 'user' ? 'Пользователь' : 'Тренер'}: ${m.content}`).join('\n')}
+        
+        Новое сообщение пользователя: ${textToSend}` }
+      ];
+
+      if (images.length > 0) {
+        images.forEach(img => {
+          parts.push({
+            inlineData: {
+              data: img.split(',')[1],
+              mimeType: "image/jpeg"
+            }
+          });
+        });
+      }
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: [{ role: 'user', parts }],
+        config: {
+          systemInstruction: "Ты — профессиональный ИИ-фитнес-тренер. Твой стиль: объективный, конструктивный, лаконичный. ФОРМАТИРОВАНИЕ: Обязательно разделяй блоки текста ПУСТЫМИ СТРОКАМИ. Используй заголовки ### для разделов. Избегай сплошного текста и избыточного выделения жирным. СОДЕРЖАНИЕ: Анализируй только предоставленные данные. Если данных (возраст, вес) не хватает для точного совета — укажи на это. Не называй себя никаким именем.",
+        }
+      });
+
+      const aiMsg = { role: 'assistant', content: response.text || "Извини, я не смогла сформулировать ответ. Попробуй еще раз! 🧘‍♀️" };
+      setMessages([...newMessages, aiMsg]);
+    } catch (error: any) {
+      console.error("Coach error details:", error);
+      const errorMessage = error?.message?.includes("API key") 
+        ? "Ошибка: API ключ не найден. Пожалуйста, проверьте настройки. 🧘‍♀️"
+        : "Извини, произошла ошибка при связи с ИИ. Попробуй еще раз позже или проверь интернет-соединение. 🧘‍♀️";
+      
+      setMessages([...newMessages, { role: 'assistant', content: errorMessage }]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }} 
+      animate={{ opacity: 1 }} 
+      exit={{ opacity: 0 }} 
+      className="flex flex-col h-[600px] max-h-[70vh] md:h-[calc(100vh-280px)]"
+    >
+      <div className="bg-white p-6 rounded-[32px] border border-border shadow-sm mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-accent/10 rounded-2xl flex items-center justify-center text-accent">
+            <Bot size={28} />
+          </div>
+          <div>
+            <h2 className="text-lg font-display font-bold text-accent">Твой ИИ Тренер</h2>
+            <p className="text-[10px] text-muted uppercase font-bold tracking-widest">Персональные советы и мотивация</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => handleSend("Проанализируй мой прогресс за последнее время")}
+            className="px-4 py-2 bg-accent/5 hover:bg-accent/10 text-accent text-[10px] font-bold uppercase tracking-wider rounded-xl border border-accent/20 transition-all flex items-center gap-2"
+          >
+            <TrendingUp size={14} />
+            Анализ
+          </button>
+          <div className="relative">
+            <button 
+              onClick={() => setShowClearConfirm(!showClearConfirm)}
+              className="p-2 bg-red-50 hover:bg-red-100 text-red-500 rounded-xl border border-red-100 transition-all"
+              title="Очистить чат"
+            >
+              <Trash2 size={16} />
+            </button>
+            {showClearConfirm && (
+              <div className="absolute right-0 top-full mt-2 w-48 bg-white border border-border rounded-2xl shadow-xl p-4 z-50 animate-in fade-in slide-in-from-top-2">
+                <p className="text-xs font-bold text-text mb-3">Очистить историю?</p>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => {
+                      setMessages([]);
+                      setShowClearConfirm(false);
+                    }}
+                    className="flex-1 py-2 bg-red-500 text-white text-[10px] font-bold uppercase rounded-lg"
+                  >
+                    Да
+                  </button>
+                  <button 
+                    onClick={() => setShowClearConfirm(false)}
+                    className="flex-1 py-2 bg-surface-2 text-text text-[10px] font-bold uppercase rounded-lg"
+                  >
+                    Нет
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-4 pr-2 no-scrollbar mb-4">
+        {!apiKey && (
+          <div className="bg-red-50 border-2 border-red-100 rounded-2xl p-4 text-red-600 text-xs font-bold flex items-center gap-3">
+            <AlertCircle size={20} />
+            <div>
+              API ключ не найден. Пожалуйста, добавьте его в секреты проекта (GEMINI_API_KEY).
+            </div>
+          </div>
+        )}
+        {messages.length === 0 && (
+          <div className="text-center py-12 opacity-50">
+            <Sparkles className="mx-auto mb-4 text-accent" size={32} />
+            <p className="text-sm font-medium">Привет! Я твой ИИ тренер. <br/> Спроси меня о прогрессе, технике или пришли фото формы! ✨</p>
+          </div>
+        )}
+        {messages.map((m: any, i: number) => (
+          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[85%] p-4 rounded-3xl text-sm leading-relaxed shadow-sm ${
+              m.role === 'user' 
+                ? 'bg-accent text-white rounded-tr-none' 
+                : 'bg-white border border-border text-text rounded-tl-none'
+            }`}>
+              {m.images && m.images.length > 0 && (
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  {m.images.map((img: string, imgIdx: number) => (
+                    <img key={imgIdx} src={img} alt="Uploaded" className="w-full h-32 object-cover rounded-2xl border border-white/20" />
+                  ))}
+                </div>
+              )}
+              {m.content}
+            </div>
+          </div>
+        ))}
+        {isLoading && (
+          <div className="flex justify-start">
+            <div className="bg-white border border-border p-4 rounded-3xl rounded-tl-none flex gap-1">
+              <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 1 }} className="w-1.5 h-1.5 bg-accent rounded-full" />
+              <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 1, delay: 0.2 }} className="w-1.5 h-1.5 bg-accent rounded-full" />
+              <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 1, delay: 0.4 }} className="w-1.5 h-1.5 bg-accent rounded-full" />
+            </div>
+          </div>
+        )}
+      </div>
+
+      <form 
+        onSubmit={(e) => {
+          e.preventDefault();
+          handleSend();
+        }}
+        className="space-y-3"
+      >
+        {images.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+            {images.map((img, idx) => (
+              <div key={idx} className="relative flex-shrink-0">
+                <img src={img} alt="Preview" className="h-20 w-20 object-cover rounded-2xl border-2 border-accent shadow-lg" />
+                <button 
+                  type="button"
+                  onClick={() => setImages(prev => prev.filter((_, i) => i !== idx))}
+                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        
+        <div className="relative">
+          <input 
+            type="text" 
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Спроси тренера или прикрепи фото..."
+            className="w-full py-4 pl-14 pr-16 bg-white border-2 border-border rounded-2xl focus:border-accent focus:outline-none transition-all shadow-sm font-medium"
+          />
+          <button 
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="absolute left-4 top-1/2 -translate-y-1/2 text-muted hover:text-accent transition-all"
+          >
+            <Camera size={24} />
+          </button>
+          <input 
+            type="file" 
+            ref={fileInputRef}
+            onChange={handleImageUpload}
+            accept="image/*"
+            multiple
+            className="hidden"
+          />
+          <button 
+            type="submit"
+            disabled={isLoading || (!input.trim() && images.length === 0)}
+            className="absolute right-2 top-2 bottom-2 px-4 bg-accent text-white rounded-xl shadow-lg active:scale-95 disabled:opacity-50 transition-all"
+          >
+            <MessageSquare size={20} />
+          </button>
+        </div>
+      </form>
+    </motion.div>
+  );
+}
+
+function ProfilePage({ 
+  profile, 
+  onUpdate, 
+  onLogout,
+  measurements,
+  onSaveWeight,
+  onExportData,
+  onImportData
+}: { 
+  profile: UserProfile | null; 
+  onUpdate: (data: any) => Promise<void>; 
+  onLogout: () => void;
+  measurements: WeightMeasurement[];
+  onSaveWeight: (data: any) => void;
+  onExportData: () => void;
+  onImportData: (e: React.ChangeEvent<HTMLInputElement>) => void;
+}) {
+  const [name, setName] = useState(profile?.displayName || '');
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const profileFileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (profile?.displayName && !name) {
+      setName(profile.displayName);
+    }
+  }, [profile?.displayName]);
+
+  const handleProfileImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setIsSaving(true);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          const max = 400; // Profile pics can be smaller
+          if (width > height) {
+            if (width > max) {
+              height *= max / width;
+              width = max;
+            }
+          } else {
+            if (height > max) {
+              width *= max / height;
+              height = max;
+            }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, width, height);
+          onUpdate({ photoURL: canvas.toDataURL('image/jpeg', 0.8) }).finally(() => {
+            setIsSaving(false);
+            setSaveSuccess(true);
+            setTimeout(() => setSaveSuccess(false), 3000);
+          });
+        };
+        img.src = event.target?.result as string;
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSaveName = async () => {
+    setIsSaving(true);
+    try {
+      await onUpdate({ displayName: name });
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} className="space-y-8 pb-12">
+      <div className="bg-white p-8 rounded-[40px] border border-border shadow-sm text-center relative">
+        <div 
+          onClick={() => profileFileInputRef.current?.click()}
+          className="group w-24 h-24 bg-accent/10 rounded-[32px] flex items-center justify-center text-accent mx-auto mb-6 overflow-hidden border-2 border-accent/20 cursor-pointer relative"
+        >
+          {profile?.photoURL ? (
+            <img src={profile.photoURL} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+          ) : (
+            <UserIcon size={48} />
+          )}
+          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+            <Camera size={20} />
+          </div>
+        </div>
+        <input 
+          type="file" 
+          ref={profileFileInputRef}
+          onChange={handleProfileImageUpload}
+          accept="image/*"
+          className="hidden"
+        />
+        <h2 className="text-2xl font-display font-bold text-accent mb-2">Настройки профиля</h2>
+        <p className="text-sm text-muted mb-8">Персонализируй приложение под себя ✨</p>
+
+        <div className="space-y-6 text-left">
+          <div className="space-y-2">
+            <label className="text-[10px] text-muted uppercase font-bold tracking-widest ml-4">Твоё имя</label>
+            <input 
+              type="text" 
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Как тебя называть?"
+              className="w-full py-4 px-6 bg-surface-2/50 border-2 border-border rounded-2xl focus:border-accent outline-none transition-all font-medium"
+            />
+          </div>
+
+          <button 
+            onClick={handleSaveName}
+            disabled={isSaving}
+            className="w-full py-4 bg-accent text-white font-bold rounded-2xl shadow-lg active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+          >
+            {isSaving ? (
+              <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}>
+                <Settings size={20} />
+              </motion.div>
+            ) : (
+              <Save size={20} />
+            )}
+            {isSaving ? 'Сохранение...' : 'Сохранить изменения'}
+          </button>
+
+          <AnimatePresence>
+            {saveSuccess && (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="text-center text-emerald-500 text-xs font-bold"
+              >
+                ✅ Профиль успешно обновлен!
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+
+      <div className="bg-white p-8 rounded-[40px] border border-border shadow-sm">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 bg-accent/10 rounded-xl flex items-center justify-center text-accent">
+            <Scale size={20} />
+          </div>
+          <h3 className="text-xl font-display font-bold text-accent">Твои замеры</h3>
+        </div>
+        
+        <WeightPage 
+          measurements={measurements} 
+          onSave={onSaveWeight} 
+          onExportData={onExportData}
+          onImportData={onImportData}
+        />
+      </div>
+
+      <div className="bg-white p-6 rounded-[32px] border border-border shadow-sm">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center text-red-500">
+              <LogOut size={20} />
+            </div>
+            <div>
+              <div className="text-sm font-bold text-text">Выйти из аккаунта</div>
+              <div className="text-[10px] text-muted uppercase font-bold tracking-wider">{profile?.email}</div>
+            </div>
+          </div>
+          <button 
+            onClick={onLogout}
+            className="px-4 py-2 border-2 border-red-100 text-red-500 text-[10px] font-bold uppercase tracking-wider rounded-xl hover:bg-red-50 transition-all"
+          >
+            Выйти
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
 function NavTab({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
   return (
     <button 
@@ -675,7 +1347,10 @@ function TodayPage({
             onUpdateSet={(sIdx: number, field: number, val: string) => {
               setCurrentSets((prev: any) => {
                 const updated = { ...prev };
-                if (!updated[idx]) updated[idx] = Array(ex.sets).fill(null).map(() => ['', '']);
+                if (!updated[idx]) {
+                  const fieldCount = ex.isCardio ? (ex.fields?.length || 1) : 2;
+                  updated[idx] = Array(ex.sets).fill(null).map(() => Array(fieldCount).fill(''));
+                }
                 updated[idx][sIdx][field] = val;
                 return updated;
               });
@@ -741,9 +1416,10 @@ function ExerciseCard({ exercise, index, isChecked, onCheck, sets, onUpdateSet, 
                           <div key={fi} className="flex flex-col items-center">
                             <input 
                               type="number" 
+                              step="any"
                               className="w-12 bg-white border-2 border-border text-center text-sm p-2 rounded-xl focus:border-accent outline-none transition-all"
-                              value={sets[fi] || ''}
-                              onChange={(e) => onUpdateSet(fi, 0, e.target.value)}
+                              value={sets[0]?.[fi] || ''}
+                              onChange={(e) => onUpdateSet(0, fi, e.target.value)}
                             />
                             <span className="text-[8px] text-muted font-bold mt-1 uppercase">{f}</span>
                           </div>
@@ -793,7 +1469,11 @@ function ExerciseCard({ exercise, index, isChecked, onCheck, sets, onUpdateSet, 
   );
 }
 
-function ProgressPage({ workouts }: { workouts: Workout[] }) {
+function ProgressPage({ workouts, onDelete, onUpdate }: { workouts: Workout[]; onDelete: (id: string) => void; onUpdate: (id: string, data: any) => void }) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDate, setEditDate] = useState('');
+  const [editDay, setEditDay] = useState('');
+
   const stats = useMemo(() => {
     const now = new Date();
     const thisMonth = workouts.filter(w => {
@@ -806,6 +1486,18 @@ function ProgressPage({ workouts }: { workouts: Workout[] }) {
       best: Math.floor(workouts.length / 3) // Placeholder
     };
   }, [workouts]);
+
+  const handleStartEdit = (w: Workout) => {
+    setEditingId(w.id);
+    setEditDate(w.date.split('T')[0]);
+    setEditDay(w.day);
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingId) return;
+    onUpdate(editingId, { date: new Date(editDate).toISOString(), day: editDay });
+    setEditingId(null);
+  };
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-8">
@@ -824,18 +1516,57 @@ function ProgressPage({ workouts }: { workouts: Workout[] }) {
         ) : (
           <div className="space-y-3">
             {workouts.map(w => (
-              <div key={w.id} className="bg-white border-2 border-border rounded-3xl p-5 flex justify-between items-center shadow-sm hover:border-accent/30 transition-all">
-                <div>
-                  <div className="text-[11px] text-muted font-bold uppercase tracking-wider mb-1">
-                    {format(parseISO(w.date), 'd MMMM · HH:mm', { locale: ru })}
+              <div key={w.id} className="bg-white border-2 border-border rounded-3xl p-5 shadow-sm hover:border-accent/30 transition-all">
+                {editingId === w.id ? (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-2">
+                      <input 
+                        type="date" 
+                        value={editDate}
+                        onChange={(e) => setEditDate(e.target.value)}
+                        className="w-full bg-surface-2 border-2 border-border p-2 rounded-xl text-xs font-bold"
+                      />
+                      <select 
+                        value={editDay}
+                        onChange={(e) => setEditDay(e.target.value)}
+                        className="w-full bg-surface-2 border-2 border-border p-2 rounded-xl text-xs font-bold"
+                      >
+                        {Object.keys(PROGRAM).map(day => (
+                          <option key={day} value={day}>{day}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={handleSaveEdit} className="flex-1 py-2 bg-done text-white text-[10px] font-bold uppercase rounded-xl">Сохранить</button>
+                      <button onClick={() => setEditingId(null)} className="flex-1 py-2 bg-surface-3 text-text text-[10px] font-bold uppercase rounded-xl">Отмена</button>
+                    </div>
                   </div>
-                  <div className="text-[15px] font-bold text-text">
-                    {w.day} — {PROGRAM[w.day]?.subtitle}
+                ) : (
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <div className="text-[11px] text-muted font-bold uppercase tracking-wider mb-1">
+                        {format(parseISO(w.date), 'd MMMM · HH:mm', { locale: ru })}
+                      </div>
+                      <div className="text-[15px] font-bold text-text">
+                        {w.day} — {PROGRAM[w.day]?.subtitle}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={() => handleStartEdit(w)}
+                        className="p-2 text-muted hover:text-accent transition-colors"
+                      >
+                        <Edit2 size={16} />
+                      </button>
+                      <button 
+                        onClick={() => onDelete(w.id)}
+                        className="p-2 text-muted hover:text-red-500 transition-colors"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
-                </div>
-                <div className="text-[10px] px-4 py-1.5 rounded-full bg-done/10 text-done border-2 border-done/20 font-bold uppercase tracking-wider">
-                  ✓ готово
-                </div>
+                )}
               </div>
             ))}
           </div>
@@ -854,10 +1585,13 @@ function StatItem({ value, label }: { value: number; label: string }) {
   );
 }
 
-function StrengthPage({ records, onSave }: { records: StrengthRecord[]; onSave: (data: any) => void }) {
+function StrengthPage({ records, onSave, onDelete, onUpdate }: { records: StrengthRecord[]; onSave: (data: any) => void; onDelete: (id: string) => void; onUpdate: (id: string, data: any) => void }) {
   const [exercise, setExercise] = useState('Ягодичный мостик со штангой');
   const [weight, setWeight] = useState('');
   const [reps, setReps] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editWeight, setEditWeight] = useState('');
+  const [editReps, setEditReps] = useState('');
 
   const byExercise = useMemo(() => {
     const groups: Record<string, StrengthRecord[]> = {};
@@ -873,6 +1607,18 @@ function StrengthPage({ records, onSave }: { records: StrengthRecord[]; onSave: 
     onSave({ exercise, weight: Number(weight), reps: Number(reps) });
     setWeight('');
     setReps('');
+  };
+
+  const handleStartEdit = (r: StrengthRecord) => {
+    setEditingId(r.id);
+    setEditWeight(r.weight.toString());
+    setEditReps(r.reps.toString());
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingId) return;
+    onUpdate(editingId, { weight: Number(editWeight), reps: Number(editReps) });
+    setEditingId(null);
   };
 
   return (
@@ -930,17 +1676,16 @@ function StrengthPage({ records, onSave }: { records: StrengthRecord[]; onSave: 
           <div className="space-y-4">
             {Object.entries(byExercise).map(([name, entries]) => {
               const strengthEntries = entries as StrengthRecord[];
-              const latest = strengthEntries[0];
-              const best = strengthEntries.reduce((max, e) => e.weight > max.weight ? e : max, strengthEntries[0]);
-              const prev = strengthEntries[1];
-              const trend = prev ? (latest.weight > prev.weight ? '↑' : latest.weight < prev.weight ? '↓' : '→') : '—';
+              const sortedEntries = [...strengthEntries].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+              const latest = sortedEntries[0];
+              const best = sortedEntries.reduce((max, e) => e.weight > max.weight ? e : max, sortedEntries[0]);
               
               return (
                 <div key={name} className="bg-white border-2 border-border rounded-3xl p-6 space-y-4 shadow-sm">
                   <div className="flex justify-between items-start">
                     <div className="text-[14px] font-bold text-text flex-1">{name}</div>
-                    <div className={`text-2xl font-bold ${trend === '↑' ? 'text-done' : trend === '↓' ? 'text-accent' : 'text-muted'}`}>{trend}</div>
                   </div>
+                  
                   <div className="grid grid-cols-3 gap-3 text-center">
                     <div className="bg-surface-2/50 p-3 rounded-2xl">
                       <div className="text-[9px] text-muted uppercase font-bold mb-1">Сейчас</div>
@@ -958,6 +1703,46 @@ function StrengthPage({ records, onSave }: { records: StrengthRecord[]; onSave: 
                       <div className="text-[10px] text-muted font-bold">+1кг</div>
                     </div>
                   </div>
+
+                  <div className="space-y-2 pt-2 border-t border-border/50">
+                    <div className="text-[10px] text-muted uppercase font-bold mb-2">История</div>
+                    {sortedEntries.map(entry => (
+                      <div key={entry.id} className="flex justify-between items-center text-[12px] py-1">
+                        {editingId === entry.id ? (
+                          <div className="flex-1 flex gap-2 items-center">
+                            <input 
+                              type="number" 
+                              value={editWeight}
+                              onChange={(e) => setEditWeight(e.target.value)}
+                              className="w-16 bg-surface-2 border border-border p-1 rounded-lg text-xs font-bold"
+                            />
+                            <span className="text-muted">кг x</span>
+                            <input 
+                              type="number" 
+                              value={editReps}
+                              onChange={(e) => setEditReps(e.target.value)}
+                              className="w-12 bg-surface-2 border border-border p-1 rounded-lg text-xs font-bold"
+                            />
+                            <button onClick={handleSaveEdit} className="p-1 text-done"><Check size={16}/></button>
+                            <button onClick={() => setEditingId(null)} className="p-1 text-muted"><X size={16}/></button>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="text-muted font-medium">
+                              {format(parseISO(entry.date), 'd MMM', { locale: ru })}
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <div className="font-bold text-text">{entry.weight}кг x {entry.reps}</div>
+                              <div className="flex gap-1">
+                                <button onClick={() => handleStartEdit(entry)} className="p-1 text-muted hover:text-accent"><Edit2 size={14}/></button>
+                                <button onClick={() => onDelete(entry.id)} className="p-1 text-muted hover:text-red-500"><Trash2 size={14}/></button>
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               );
             })}
@@ -971,38 +1756,56 @@ function StrengthPage({ records, onSave }: { records: StrengthRecord[]; onSave: 
 function WeightPage({ 
   measurements, 
   onSave,
-  onExport,
-  onImport
+  onExportData,
+  onImportData
 }: { 
   measurements: WeightMeasurement[]; 
   onSave: (data: any) => void;
-  onExport: () => void;
-  onImport: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onExportData: () => void;
+  onImportData: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }) {
   const [weight, setWeight] = useState('');
+  const [age, setAge] = useState('');
   const [fat, setFat] = useState('');
   const [muscle, setMuscle] = useState('');
   const [water, setWater] = useState('');
+  const [chest, setChest] = useState('');
+  const [waist, setWaist] = useState('');
+  const [hips, setHips] = useState('');
+  const [bicep, setBicep] = useState('');
+  const [thigh, setThigh] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSave = () => {
     if (!weight) return;
     onSave({ 
       weight: Number(weight), 
+      age: age ? Number(age) : undefined,
       fat: fat ? Number(fat) : undefined, 
       muscle: muscle ? Number(muscle) : undefined, 
-      water: water ? Number(water) : undefined 
+      water: water ? Number(water) : undefined,
+      chest: chest ? Number(chest) : undefined,
+      waist: waist ? Number(waist) : undefined,
+      hips: hips ? Number(hips) : undefined,
+      bicep: bicep ? Number(bicep) : undefined,
+      thigh: thigh ? Number(thigh) : undefined
     });
     setWeight('');
+    setAge('');
     setFat('');
     setMuscle('');
     setWater('');
+    setChest('');
+    setWaist('');
+    setHips('');
+    setBicep('');
+    setThigh('');
   };
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-8">
-      <div className="bg-white border-2 border-border rounded-[32px] p-6 space-y-6 shadow-sm">
-        <h3 className="font-display text-2xl text-accent font-bold">Новый замер</h3>
+    <div className="space-y-8">
+      <div className="space-y-6">
+        <h4 className="text-[10px] text-muted uppercase font-bold tracking-widest">Новый замер</h4>
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Вес (кг)</label>
@@ -1014,6 +1817,15 @@ function WeightPage({
             />
           </div>
           <div>
+            <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Возраст</label>
+            <input 
+              type="number" 
+              className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
+              value={age}
+              onChange={(e) => setAge(e.target.value)}
+            />
+          </div>
+          <div>
             <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Жир (%)</label>
             <input 
               type="number" 
@@ -1022,25 +1834,56 @@ function WeightPage({
               onChange={(e) => setFat(e.target.value)}
             />
           </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Мышцы (%)</label>
+            <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Грудь (см)</label>
             <input 
               type="number" 
               className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
-              value={muscle}
-              onChange={(e) => setMuscle(e.target.value)}
+              value={chest}
+              onChange={(e) => setChest(e.target.value)}
             />
           </div>
           <div>
-            <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Вода (%)</label>
+            <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Талия (см)</label>
             <input 
               type="number" 
               className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
-              value={water}
-              onChange={(e) => setWater(e.target.value)}
+              value={waist}
+              onChange={(e) => setWaist(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Бёдра (см)</label>
+            <input 
+              type="number" 
+              className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
+              value={hips}
+              onChange={(e) => setHips(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Бицепс (см)</label>
+            <input 
+              type="number" 
+              className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
+              value={bicep}
+              onChange={(e) => setBicep(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Бедро (см)</label>
+            <input 
+              type="number" 
+              className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
+              value={thigh}
+              onChange={(e) => setThigh(e.target.value)}
             />
           </div>
         </div>
+
         <button 
           onClick={handleSave}
           className="w-full py-4 bg-accent hover:bg-accent-2 text-white font-bold text-sm uppercase tracking-widest rounded-2xl shadow-lg transition-all active:scale-95"
@@ -1049,48 +1892,69 @@ function WeightPage({
         </button>
       </div>
 
-      <div className="space-y-6">
+      <div className="bg-accent/5 border-2 border-accent/10 rounded-[32px] p-6 space-y-4">
         <div className="flex justify-between items-center">
-          <h3 className="font-display text-2xl text-accent font-bold">Динамика</h3>
+          <div>
+            <h4 className="text-[11px] text-accent uppercase font-bold tracking-widest">Резервное копирование</h4>
+            <p className="text-[9px] text-muted font-medium mt-1 uppercase">Экспорт и импорт всех данных (тренировки, замеры, веса)</p>
+          </div>
           <div className="flex gap-2">
             <button 
-              onClick={onExport}
-              className="text-[10px] text-accent border-2 border-accent/20 px-3 py-1.5 rounded-xl hover:bg-accent/5 transition-all font-bold uppercase tracking-tight"
+              onClick={onExportData}
+              className="text-[10px] bg-white text-accent border-2 border-accent/20 px-4 py-2 rounded-xl hover:bg-accent/5 transition-all font-bold uppercase tracking-tight shadow-sm"
             >
               Экспорт
             </button>
             <button 
               onClick={() => fileInputRef.current?.click()}
-              className="text-[10px] text-accent border-2 border-accent/20 px-3 py-1.5 rounded-xl hover:bg-accent/5 transition-all font-bold uppercase tracking-tight"
+              className="text-[10px] bg-white text-accent border-2 border-accent/20 px-4 py-2 rounded-xl hover:bg-accent/5 transition-all font-bold uppercase tracking-tight shadow-sm"
             >
               Импорт
             </button>
             <input 
               type="file" 
               ref={fileInputRef}
-              onChange={onImport}
+              onChange={onImportData}
               className="hidden"
               accept=".json"
             />
           </div>
         </div>
+      </div>
+
+      <div className="space-y-6">
+        <h4 className="text-[10px] text-muted uppercase font-bold tracking-widest px-1">История замеров</h4>
         {measurements.length === 0 ? (
           <div className="text-center py-16 bg-white rounded-3xl border-2 border-dashed border-border text-muted text-sm font-medium">Нет записей. Добавь первый! 📏</div>
         ) : (
           <div className="space-y-3">
             {measurements.map(m => (
-              <div key={m.id} className="flex justify-between items-center p-5 bg-white border-2 border-border rounded-3xl shadow-sm hover:border-accent/30 transition-all">
-                <span className="text-muted text-[11px] font-bold uppercase tracking-wider">{format(parseISO(m.date), 'd MMM', { locale: ru })}</span>
-                <span className="text-accent text-xl font-display font-bold">{m.weight} кг</span>
-                <span className="text-muted text-[10px] font-bold uppercase">
+              <div key={m.id} className="p-5 bg-surface-2/50 border-2 border-border rounded-3xl shadow-sm hover:border-accent/30 transition-all space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-muted text-[11px] font-bold uppercase tracking-wider">{format(parseISO(m.date), 'd MMM yyyy', { locale: ru })}</span>
+                  <div className="text-right">
+                    <div className="text-accent text-xl font-display font-bold">{m.weight} кг</div>
+                    {m.age && <div className="text-[10px] text-muted font-bold uppercase">{m.age} лет</div>}
+                  </div>
+                </div>
+                {(m.chest || m.waist || m.hips || m.bicep || m.thigh) && (
+                  <div className="grid grid-cols-3 gap-2 text-[10px] text-muted font-bold uppercase">
+                    {m.chest && <span>Грудь: {m.chest}</span>}
+                    {m.waist && <span>Талия: {m.waist}</span>}
+                    {m.hips && <span>Бёдра: {m.hips}</span>}
+                    {m.bicep && <span>Бицепс: {m.bicep}</span>}
+                    {m.thigh && <span>Бедро: {m.thigh}</span>}
+                  </div>
+                )}
+                <div className="text-[10px] text-muted font-bold uppercase opacity-60">
                   {m.fat ? `${m.fat}% жир` : ''} {m.muscle ? `· ${m.muscle}% мышцы` : ''}
-                </span>
+                </div>
               </div>
             ))}
           </div>
         )}
       </div>
-    </motion.div>
+    </div>
   );
 }
 

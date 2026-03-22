@@ -61,7 +61,7 @@ service cloud.firestore {
       return data.keys().hasOnly(['displayName', 'email', 'photoURL', 'role']) &&
              data.displayName is string && data.displayName.size() > 0 && data.displayName.size() < 100 &&
              data.email is string && isValidEmail(data.email) &&
-             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() < 1000)) &&
+             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() < 1000000)) &&
              (!('role' in data) || (data.role is string && data.role in ['admin', 'user']));
     }
 
@@ -76,10 +76,11 @@ service cloud.firestore {
 
     function isValidMeasurement(data) {
       return data.keys().hasAll(['userId', 'date', 'weight']) &&
-             data.keys().hasOnly(['userId', 'date', 'weight', 'fat', 'muscle', 'water']) &&
+             data.keys().hasOnly(['userId', 'date', 'weight', 'age', 'fat', 'muscle', 'water', 'chest', 'waist', 'hips', 'bicep', 'thigh']) &&
              data.userId == request.auth.uid &&
              isValidDateString(data.date) &&
-             data.weight is number;
+             data.weight is number &&
+             (!('age' in data) || data.age is number);
     }
 
     function isValidStrengthRecord(data) {
