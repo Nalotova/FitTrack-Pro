@@ -41,8 +41,11 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-          (request.auth.token.email == "es.nalyotova@gmail.com" && request.auth.token.email_verified == true));
+        (
+          (request.auth.token.email == "es.nalyotova@gmail.com" && request.auth.token.email_verified == true) ||
+          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+        );
     }
 
     function isValidEmail(email) {
@@ -58,11 +61,12 @@ service cloud.firestore {
     // ===============================================================
 
     function isValidUserProfile(data) {
-      return data.keys().hasOnly(['displayName', 'email', 'photoURL', 'role']) &&
+      return data.keys().hasOnly(['displayName', 'email', 'photoURL', 'role', 'createdAt']) &&
              data.displayName is string && data.displayName.size() > 0 && data.displayName.size() < 100 &&
              data.email is string && isValidEmail(data.email) &&
              (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() < 1000000)) &&
-             (!('role' in data) || (data.role is string && data.role in ['admin', 'user']));
+             (!('role' in data) || (data.role is string && data.role in ['admin', 'user'])) &&
+             (!('createdAt' in data) || isValidDateString(data.createdAt));
     }
 
     function isValidWorkout(data) {
@@ -76,11 +80,22 @@ service cloud.firestore {
 
     function isValidMeasurement(data) {
       return data.keys().hasAll(['userId', 'date', 'weight']) &&
-             data.keys().hasOnly(['userId', 'date', 'weight', 'age', 'fat', 'muscle', 'water', 'chest', 'waist', 'hips', 'bicep', 'thigh']) &&
+             data.keys().hasOnly(['userId', 'date', 'weight', 'age', 'fat', 'muscle', 'water', 'chest', 'waist', 'waistHigh', 'waistNavel', 'waistWidest', 'hips', 'bicep', 'thigh']) &&
              data.userId == request.auth.uid &&
              isValidDateString(data.date) &&
              data.weight is number &&
-             (!('age' in data) || data.age is number);
+             (!('age' in data) || data.age is number || data.age == null) &&
+             (!('fat' in data) || data.fat is number || data.fat == null) &&
+             (!('muscle' in data) || data.muscle is number || data.muscle == null) &&
+             (!('water' in data) || data.water is number || data.water == null) &&
+             (!('chest' in data) || data.chest is number || data.chest == null) &&
+             (!('waist' in data) || data.waist is number || data.waist == null) &&
+             (!('waistHigh' in data) || data.waistHigh is number || data.waistHigh == null) &&
+             (!('waistNavel' in data) || data.waistNavel is number || data.waistNavel == null) &&
+             (!('waistWidest' in data) || data.waistWidest is number || data.waistWidest == null) &&
+             (!('hips' in data) || data.hips is number || data.hips == null) &&
+             (!('bicep' in data) || data.bicep is number || data.bicep == null) &&
+             (!('thigh' in data) || data.thigh is number || data.thigh == null);
     }
 
     function isValidStrengthRecord(data) {
@@ -123,6 +138,15 @@ service cloud.firestore {
       allow create: if isAuthenticated() && isValidStrengthRecord(request.resource.data);
       allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && isValidStrengthRecord(request.resource.data);
       allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    match /current_workout/{userId} {
+      allow read: if isOwner(userId);
+      allow write: if isOwner(userId);
+    }
+
+    match /programs/{userId} {
+      allow read, write: if isOwner(userId) || isAdmin();
     }
 
     match /{path=**} {

@@ -75,6 +75,27 @@
         "reps": { "type": "number" }
       },
       "required": ["userId", "date", "exercise", "weight", "reps"]
+    },
+    "CurrentWorkout": {
+      "title": "Current Workout",
+      "description": "The state of the user's current, active workout session.",
+      "type": "object",
+      "properties": {
+        "currentDay": { "type": "string" },
+        "checkedExercises": { "type": "array", "items": { "type": "number" } },
+        "currentSets": { "type": "object" },
+        "currentNotes": { "type": "object" }
+      }
+    },
+    "TrainingProgram": {
+      "title": "Training Program",
+      "description": "The user's customized training program.",
+      "type": "object",
+      "properties": {
+        "data": { "type": "object", "description": "The program structure (days and exercises)." },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["data", "updatedAt"]
     }
   },
   "firestore": {
@@ -93,6 +114,14 @@
     "/strength/{recordId}": {
       "schema": "StrengthRecord",
       "description": "Exercise weight history."
+    },
+    "/current_workout/{userId}": {
+      "schema": "CurrentWorkout",
+      "description": "Active workout state."
+    },
+    "/programs/{userId}": {
+      "schema": "TrainingProgram",
+      "description": "User's custom training program."
     }
   }
 }

@@ -13,6 +13,7 @@ import {
   Dumbbell, 
   Calendar, 
   ChevronRight, 
+  ChevronLeft,
   LogOut, 
   LogIn, 
   BarChart3, 
@@ -34,11 +35,13 @@ import {
   Bot,
   Sparkles,
   MessageSquare,
-  Image as ImageIcon,
+  ImageIcon,
   Camera,
-  Settings
+  Settings,
+  RotateCcw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import ReactMarkdown from 'react-markdown';
 import { GoogleGenAI, Type } from "@google/genai";
 import { 
   LineChart, 
@@ -105,6 +108,9 @@ interface WeightMeasurement {
   water?: number;
   chest?: number;
   waist?: number;
+  waistHigh?: number;
+  waistNavel?: number;
+  waistWidest?: number;
   hips?: number;
   bicep?: number;
   thigh?: number;
@@ -128,63 +134,201 @@ interface UserProfile {
 
 // Program Data
 const PROGRAM: Record<string, { subtitle: string; isCardio?: boolean; exercises: any[] }> = {
-  'День 1': {
-    subtitle: 'Ягодицы + Ноги',
-    exercises: [
-      { name: 'Ягодичный мостик со штангой', scheme: '4 × 12', sets: 4, tip: '⭐ Пауза 2 сек наверху! Старт 30-40 кг' },
-      { name: 'Болгарские сплит-приседания', scheme: '3 × 10 / нога', sets: 3, tip: 'Корпус вперёд 30-45°, дави в пятку. Старт 5-8 кг' },
-      { name: 'Жим ногами высокая постановка', scheme: '3 × 12', sets: 3, tip: 'Пятки высоко = акцент ягодицы. Старт 60-80 кг' },
-      { name: 'Румынская тяга', scheme: '3 × 10', sets: 3, tip: 'Спина прямая, тянись тазом назад. Старт 25-35 кг' },
-      { name: 'Вакуум', scheme: '3 × 30 сек', sets: 3, tip: 'Живот вваливается внутрь', bodyweight: true, unit: 'сек' },
+  "День 1": {
+    "subtitle": "Ягодицы + Ноги",
+    "exercises": [
+      {
+        "name": "Ягодичный мостик со штангой",
+        "scheme": "4 × 12",
+        "sets": 4,
+        "tip": "⭐ Пауза 2 сек наверху! Старт 30-40 кг"
+      },
+      {
+        "name": "Болгарские сплит-приседания",
+        "scheme": "3 × 10 / нога",
+        "sets": 3,
+        "tip": "Корпус вперёд 30-45°, дави в пятку. Старт 5-8 кг"
+      },
+      {
+        "name": "Жим ногами высокая постановка",
+        "scheme": "3 × 12",
+        "sets": 3,
+        "tip": "Пятки высоко = акцент ягодицы. Старт 60-80 кг"
+      },
+      {
+        "name": "Румынская тяга",
+        "scheme": "3 × 10",
+        "sets": 3,
+        "tip": "Спина прямая, тянись тазом назад. Старт 25-35 кг"
+      },
+      {
+        "name": "Вакуум",
+        "scheme": "3 × 30 сек",
+        "sets": 3,
+        "tip": "Живот вваливается внутрь",
+        "bodyweight": true,
+        "unit": "сек"
+      }
     ]
   },
-  'Кардио Вт': {
-    subtitle: 'Горы + Жизнь',
-    isCardio: true,
-    exercises: [
-      { name: 'Ходьба / горы Триберга', scheme: '30-60 мин · пульс 115-130', sets: 1, isCardio: true, fields: ['мин', 'км', 'пульс'] },
-      { name: 'Растяжка', scheme: '10 мин', sets: 1, isCardio: true, fields: ['мин'] },
+  "День 2": {
+    "subtitle": "Верх + Осанка",
+    "exercises": [
+      {
+        "name": "Жим гантелей сидя",
+        "scheme": "3 × 10",
+        "sets": 3,
+        "tip": "Старт 8-10 кг × 2"
+      },
+      {
+        "name": "Отжимания от пола / от колен",
+        "scheme": "3 × 12",
+        "sets": 3,
+        "tip": "Тонус груди + кор без перекачки передней дельты",
+        "bodyweight": true,
+        "unit": "раз"
+      },
+      {
+        "name": "Тяга верхнего блока широким хватом",
+        "scheme": "3 × 12",
+        "sets": 3,
+        "tip": "Плечи вниз, тяни к груди. Старт 25-35 кг"
+      },
+      {
+        "name": "Тяга гантели в наклоне",
+        "scheme": "3 × 10 / сторону",
+        "sets": 3,
+        "tip": "Спина параллельна полу. Старт 10-12 кг"
+      },
+      {
+        "name": "Face pulls",
+        "scheme": "3 × 20",
+        "sets": 3,
+        "tip": "⭐ Тяни к лбу! В конце разводи кулаки — лопатки сводятся. Минимальный вес"
+      },
+      {
+        "name": "Разводка в стороны",
+        "scheme": "3 × 15",
+        "sets": 3,
+        "tip": "Локоть чуть согнут. Старт 3-5 кг"
+      },
+      {
+        "name": "Мёртвый жук (Dead Bug)",
+        "scheme": "3 × 10 / сторону",
+        "sets": 3,
+        "tip": "Поясница намертво к полу! Выдох на движении",
+        "bodyweight": true,
+        "unit": "раз"
+      },
+      {
+        "name": "Планка",
+        "scheme": "3 × 45 сек",
+        "sets": 3,
+        "tip": "Дыши, не задерживай",
+        "bodyweight": true,
+        "unit": "сек"
+      }
     ]
   },
-  'День 2': {
-    subtitle: 'Верх + Осанка',
-    exercises: [
-      { name: 'Жим гантелей сидя', scheme: '3 × 10', sets: 3, tip: 'Старт 8-10 кг × 2' },
-      { name: 'Отжимания от пола / от колен', scheme: '3 × 12', sets: 3, tip: 'Тонус груди + кор без перекачки передней дельты', bodyweight: true, unit: 'раз' },
-      { name: 'Тяга верхнего блока широким хватом', scheme: '3 × 12', sets: 3, tip: 'Плечи вниз, тяни к груди. Старт 25-35 кг' },
-      { name: 'Тяга гантели в наклоне', scheme: '3 × 10 / сторону', sets: 3, tip: 'Спина параллельна полу. Старт 10-12 кг' },
-      { name: 'Face pulls', scheme: '3 × 20', sets: 3, tip: '⭐ Тяни к лбу! В конце разводи кулаки — лопатки сводятся. Минимальный вес' },
-      { name: 'Разводка в стороны', scheme: '3 × 15', sets: 3, tip: 'Локоть чуть согнут. Старт 3-5 кг' },
-      { name: 'Мёртвый жук (Dead Bug)', scheme: '3 × 10 / сторону', sets: 3, tip: 'Поясница намертво к полу! Выдох на движении', bodyweight: true, unit: 'раз' },
-      { name: 'Планка', scheme: '3 × 45 сек', sets: 3, tip: 'Дыши, не задерживай', bodyweight: true, unit: 'сек' },
+  "День 3": {
+    "subtitle": "Задняя линия + Плечи",
+    "exercises": [
+      {
+        "name": "Становая тяга сумо",
+        "scheme": "4 × 8",
+        "sets": 4,
+        "tip": "⭐ Королева упражнений! Спина прямая, колени над носками. Старт 40-50 кг"
+      },
+      {
+        "name": "Сгибание ног в тренажёре",
+        "scheme": "3 × 15",
+        "sets": 3,
+        "tip": "Разгрузка поясницы после становой"
+      },
+      {
+        "name": "Сумо-приседания с гантелью",
+        "scheme": "3 × 12",
+        "sets": 3,
+        "tip": "Старт 12-16 кг"
+      },
+      {
+        "name": "Гиперэкстензия с весом",
+        "scheme": "3 × 15",
+        "sets": 3,
+        "tip": "Скруглённая спина = акцент на ягодицы. Старт 5-10 кг"
+      },
+      {
+        "name": "Тяга к подбородку широким хватом",
+        "scheme": "3 × 12",
+        "sets": 3,
+        "tip": "Визуально сужает талию! Старт 15-20 кг"
+      },
+      {
+        "name": "Махи гантелями в наклоне",
+        "scheme": "3 × 15",
+        "sets": 3,
+        "tip": "Задняя дельта — исправляет сутулость. Старт 4-6 кг"
+      },
+      {
+        "name": "Планка боковая",
+        "scheme": "3 × 30 сек / сторону",
+        "sets": 3,
+        "bodyweight": true,
+        "unit": "сек"
+      }
     ]
   },
-  'Кардио Чт': {
-    subtitle: 'Горы + Жизнь',
-    isCardio: true,
-    exercises: [
-      { name: 'Ходьба / горы Триберга', scheme: '30-60 мин · пульс 115-130', sets: 1, isCardio: true, fields: ['мин', 'км', 'пульс'] },
-      { name: 'Растяжка', scheme: '10 мин', sets: 1, isCardio: true, fields: ['мин'] },
+  "Кардио 1": {
+    "subtitle": "Горы + Жизнь",
+    "isCardio": true,
+    "exercises": [
+      {
+        "name": "Ходьба / горы Триберга",
+        "scheme": "30-60 мин · пульс 115-130",
+        "sets": 1,
+        "isCardio": true,
+        "fields": ["мин", "км", "пульс"]
+      },
+      {
+        "name": "Растяжка",
+        "scheme": "10 мин",
+        "sets": 1,
+        "isCardio": true,
+        "fields": ["мин"]
+      }
     ]
   },
-  'День 3': {
-    subtitle: 'Задняя линия + Плечи',
-    exercises: [
-      { name: 'Становая тяга сумо', scheme: '4 × 8', sets: 4, tip: '⭐ Королева упражнений! Спина прямая, колени над носками. Старт 40-50 кг' },
-      { name: 'Сгибание ног в тренажёре', scheme: '3 × 15', sets: 3, tip: 'Разгрузка поясницы после становой' },
-      { name: 'Сумо-приседания с гантелью', scheme: '3 × 12', sets: 3, tip: 'Старт 12-16 кг' },
-      { name: 'Гиперэкстензия с весом', scheme: '3 × 15', sets: 3, tip: 'Скруглённая спина = акцент на ягодицы. Старт 5-10 кг' },
-      { name: 'Тяга к подбородку широким хватом', scheme: '3 × 12', sets: 3, tip: 'Визуально сужает талию! Старт 15-20 кг' },
-      { name: 'Махи гантелями в наклоне', scheme: '3 × 15', sets: 3, tip: 'Задняя дельта — исправляет сутулость. Старт 4-6 кг' },
-      { name: 'Планка боковая', scheme: '3 × 30 сек / сторону', sets: 3, bodyweight: true, unit: 'сек' },
+  "Кардио 2": {
+    "subtitle": "Активное восстановление",
+    "isCardio": true,
+    "exercises": [
+      {
+        "name": "Эллипс / Велосипед",
+        "scheme": "30-45 мин",
+        "sets": 1,
+        "isCardio": true,
+        "fields": ["мин", "пульс"]
+      }
     ]
   },
-  'Кардио Вс': {
-    subtitle: 'Горы + Отдых',
-    isCardio: true,
-    exercises: [
-      { name: 'Ходьба / горы Триберга', scheme: '30-60 мин · спокойный темп', sets: 1, isCardio: true, fields: ['мин', 'км', 'пульс'] },
-      { name: 'Растяжка всего тела', scheme: '15 мин', sets: 1, isCardio: true, fields: ['мин'] },
+  "Кардио 3": {
+    "subtitle": "Горы + Отдых",
+    "isCardio": true,
+    "exercises": [
+      {
+        "name": "Ходьба / горы Триберга",
+        "scheme": "30-60 мин · спокойный темп",
+        "sets": 1,
+        "isCardio": true,
+        "fields": ["мин", "км", "пульс"]
+      },
+      {
+        "name": "Растяжка всего тела",
+        "scheme": "15 мин",
+        "sets": 1,
+        "isCardio": true,
+        "fields": ["мин"]
+      }
     ]
   }
 };
@@ -253,12 +397,97 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState<'today' | 'progress' | 'strength' | 'tech' | 'coach' | 'profile'>('today');
   const [coachMessages, setCoachMessages] = useState<any[]>([]);
   const [isCoachLoading, setIsCoachLoading] = useState(false);
+  const [programData, setProgramData] = useState<Record<string, any>>(PROGRAM);
+  const [isProgramLoading, setIsProgramLoading] = useState(true);
+  const [showProgramEditor, setShowProgramEditor] = useState(false);
   
   // Today's state
   const [currentDay, setCurrentDay] = useState('День 1');
   const [checkedExercises, setCheckedExercises] = useState<number[]>([]);
   const [currentSets, setCurrentSets] = useState<Record<number, any[][]>>({});
   const [currentNotes, setCurrentNotes] = useState<Record<number, string>>({});
+  const [isWorkoutStateLoading, setIsWorkoutStateLoading] = useState(true);
+
+  // Persistence for Today's state
+  useEffect(() => {
+    if (!user) {
+      setIsWorkoutStateLoading(false);
+      return;
+    }
+    const unsub = onSnapshot(doc(db, 'current_workout', user.uid), (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        setCurrentDay(data.currentDay || 'День 1');
+        setCheckedExercises(data.checkedExercises || []);
+        setCurrentSets(data.currentSets || {});
+        setCurrentNotes(data.currentNotes || {});
+      }
+      setIsWorkoutStateLoading(false);
+    });
+    return () => unsub();
+  }, [user]);
+
+  // Sync currentDay with programData
+  useEffect(() => {
+    if (!isProgramLoading && !programData[currentDay]) {
+      const firstDay = Object.keys(programData)[0];
+      if (firstDay) setCurrentDay(firstDay);
+    }
+  }, [programData, currentDay, isProgramLoading]);
+
+  // Persistence for Today's state
+  useEffect(() => {
+    if (!user || isWorkoutStateLoading) return;
+    const timer = setTimeout(() => {
+      saveWorkoutState({
+        currentDay,
+        checkedExercises,
+        currentSets,
+        currentNotes
+      });
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [currentDay, checkedExercises, currentSets, currentNotes, user, isWorkoutStateLoading]);
+
+  const saveWorkoutState = async (updates: any) => {
+    if (!user) return;
+    try {
+      await setDoc(doc(db, 'current_workout', user.uid), updates, { merge: true });
+    } catch (error) {
+      console.error("Failed to save workout state:", error);
+    }
+  };
+
+  const handleUpdateProgram = async (newData: any) => {
+    if (!user) return;
+    try {
+      // Save data and explicit order of keys to preserve user's preferred order
+      await setDoc(doc(db, 'programs', user.uid), { 
+        data: newData, 
+        order: Object.keys(newData),
+        updatedAt: new Date().toISOString() 
+      });
+      
+      // Validate current state against new program
+      const days = Object.keys(newData);
+      let updatedDay = currentDay;
+      if (!days.includes(currentDay)) {
+        updatedDay = days[0];
+      }
+      
+      // Save updated state
+      await saveWorkoutState({
+        currentDay: updatedDay,
+        // If program changed significantly, we might want to clear progress
+        // but for now let's just keep it if the day still exists
+        ...(updatedDay !== currentDay ? { checkedExercises: [], currentSets: {}, currentNotes: {} } : {})
+      });
+
+      // Removed alert for better mobile/iframe compatibility
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `programs/${user.uid}`);
+    }
+  };
 
   // Auth Listener
   useEffect(() => {
@@ -277,6 +506,7 @@ function AppContent() {
   // Profile Listener
   useEffect(() => {
     if (!user) return;
+    (window as any).handleUpdateProgramFromCoach = handleUpdateProgram;
     const unsubProfile = onSnapshot(doc(db, 'users', user.uid), (snapshot) => {
       if (snapshot.exists()) {
         setUserProfile(snapshot.data() as UserProfile);
@@ -284,6 +514,48 @@ function AppContent() {
       setLoading(false);
     });
     return () => unsubProfile();
+  }, [user]);
+
+  // Program Listener
+  useEffect(() => {
+    if (!user) {
+      setProgramData(PROGRAM);
+      setIsProgramLoading(false);
+      return;
+    }
+
+    const unsubProgram = onSnapshot(doc(db, 'programs', user.uid), (snapshot) => {
+      let finalData = PROGRAM;
+      if (snapshot.exists()) {
+        const snapshotData = snapshot.data();
+        const data = snapshotData.data;
+        const order = snapshotData.order;
+
+        // Check if the program is "broken" (empty exercises or English keys)
+        const hasEnglishKeys = data && Object.keys(data).some(k => k.toLowerCase().includes('day_') || k.toLowerCase().includes('cardio_'));
+        const hasEmptyExercises = data && Object.values(data).some((d: any) => !d.exercises || d.exercises.length === 0);
+        
+        if (data && Object.keys(data).length > 0 && !hasEnglishKeys && !hasEmptyExercises) {
+          // Restore order if it was explicitly saved
+          if (order && Array.isArray(order)) {
+            const orderedData: any = {};
+            order.forEach((key: string) => {
+              if (data[key]) orderedData[key] = data[key];
+            });
+            // Add any keys that might be missing from order (just in case)
+            Object.keys(data).forEach(key => {
+              if (!orderedData[key]) orderedData[key] = data[key];
+            });
+            finalData = orderedData;
+          } else {
+            finalData = data;
+          }
+        }
+      }
+      setProgramData(finalData);
+      setIsProgramLoading(false);
+    });
+    return () => unsubProgram();
   }, [user]);
 
   // Data Listeners
@@ -388,7 +660,7 @@ function AppContent() {
       userId: user.uid,
       date: new Date().toISOString(),
       day: currentDay,
-      exercises: PROGRAM[currentDay].exercises.map((ex, i) => ({
+      exercises: programData[currentDay].exercises.map((ex: any, i: number) => ({
         name: ex.name,
         sets: currentSets[i]?.map(s => ({ weight: Number(s[0]) || 0, reps: Number(s[1]) || 0 })) || []
       })),
@@ -399,12 +671,16 @@ function AppContent() {
       await addDoc(collection(db, 'workouts'), workoutToSave);
       
       // Reset state and move to next day
-      const days = Object.keys(PROGRAM);
+      const days = Object.keys(programData);
       const nextIdx = (days.indexOf(currentDay) + 1) % days.length;
-      setCurrentDay(days[nextIdx]);
-      setCheckedExercises([]);
-      setCurrentSets({});
-      setCurrentNotes({});
+      const nextDay = days[nextIdx];
+      
+      await saveWorkoutState({
+        currentDay: nextDay,
+        checkedExercises: [],
+        currentSets: {},
+        currentNotes: {}
+      });
       
       alert('🎉 Тренировка завершена! Отличная работа!');
       setActiveTab('progress');
@@ -426,13 +702,38 @@ function AppContent() {
   const handleSaveWeight = async (data: Partial<WeightMeasurement>) => {
     if (!user) return;
     try {
+      // Filter out undefined values
+      const cleanData = Object.fromEntries(
+        Object.entries(data).filter(([_, v]) => v !== undefined)
+      );
       await addDoc(collection(db, 'measurements'), {
         userId: user.uid,
         date: new Date().toISOString(),
-        ...data
+        ...cleanData
       });
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'measurements');
+    }
+  };
+
+  const handleDeleteWeight = async (id: string) => {
+    if (!confirm('Вы уверены, что хотите удалить этот замер?')) return;
+    try {
+      await deleteDoc(doc(db, 'measurements', id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `measurements/${id}`);
+    }
+  };
+
+  const handleUpdateWeight = async (id: string, data: Partial<WeightMeasurement>) => {
+    try {
+      // Filter out undefined values
+      const cleanData = Object.fromEntries(
+        Object.entries(data).filter(([_, v]) => v !== undefined)
+      );
+      await setDoc(doc(db, 'measurements', id), cleanData, { merge: true });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `measurements/${id}`);
     }
   };
 
@@ -440,10 +741,13 @@ function AppContent() {
   const handleSaveStrength = async (data: Partial<StrengthRecord>) => {
     if (!user) return;
     try {
+      const cleanData = Object.fromEntries(
+        Object.entries(data).filter(([_, v]) => v !== undefined)
+      );
       await addDoc(collection(db, 'strength'), {
         userId: user.uid,
         date: new Date().toISOString(),
-        ...data
+        ...cleanData
       });
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'strength');
@@ -452,7 +756,10 @@ function AppContent() {
 
   const handleUpdateWorkout = async (id: string, data: Partial<Workout>) => {
     try {
-      await setDoc(doc(db, 'workouts', id), data, { merge: true });
+      const cleanData = Object.fromEntries(
+        Object.entries(data).filter(([_, v]) => v !== undefined)
+      );
+      await setDoc(doc(db, 'workouts', id), cleanData, { merge: true });
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `workouts/${id}`);
     }
@@ -469,7 +776,10 @@ function AppContent() {
 
   const handleUpdateStrength = async (id: string, data: Partial<StrengthRecord>) => {
     try {
-      await setDoc(doc(db, 'strength', id), data, { merge: true });
+      const cleanData = Object.fromEntries(
+        Object.entries(data).filter(([_, v]) => v !== undefined)
+      );
+      await setDoc(doc(db, 'strength', id), cleanData, { merge: true });
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `strength/${id}`);
     }
@@ -539,59 +849,68 @@ function AppContent() {
         const measurementsToImport = imported.measurements || imported.weights || (Array.isArray(imported) && imported[0]?.weight ? imported : []);
         const strengthToImport = imported.strengthRecords || imported.strength || (Array.isArray(imported) && imported[0]?.exercise ? imported : []);
 
-        // Import workouts
-        if (workoutsToImport.length > 0) {
-          for (const w of workoutsToImport) {
-            const { id, sets, notes, ...data } = w;
+            // Import workouts
+            if (workoutsToImport.length > 0) {
+              for (const w of workoutsToImport) {
+                const { id, sets, notes, ...data } = w;
+                
+                // Transform if it's the old format (sets as object, no exercises array)
+                let workoutToSave: any = { ...data, userId: user.uid };
+                
+                if (w.sets && !w.exercises && w.day && (programData as any)[w.day]) {
+                  const program = (programData as any)[w.day];
+                  workoutToSave.exercises = program.exercises.map((ex: any, i: number) => {
+                    const rawSets = w.sets[i] || [];
+                    return {
+                      name: ex.name,
+                      sets: rawSets.map((s: any) => ({
+                        weight: Number(s[0]) || 0,
+                        reps: Number(s[1]) || 0
+                      }))
+                    };
+                  });
+                  workoutToSave.notes = typeof w.notes === 'object' ? Object.values(w.notes).join('\n') : (w.notes || '');
+                } else if (w.exercises) {
+                  // Already has exercises, just use them
+                  workoutToSave.exercises = w.exercises;
+                  workoutToSave.notes = typeof w.notes === 'object' ? Object.values(w.notes).join('\n') : (w.notes || '');
+                } else {
+                  // Fallback for unknown structure
+                  workoutToSave.exercises = [];
+                  workoutToSave.notes = '';
+                }
+
+                const cleanWorkout = Object.fromEntries(
+                  Object.entries(workoutToSave).filter(([_, v]) => v !== undefined)
+                );
+                await addDoc(collection(db, 'workouts'), cleanWorkout);
+                count++;
+              }
+            }
             
-            // Transform if it's the old format (sets as object, no exercises array)
-            let workoutToSave: any = { ...data, userId: user.uid };
-            
-            if (w.sets && !w.exercises && w.day && (PROGRAM as any)[w.day]) {
-              const program = (PROGRAM as any)[w.day];
-              workoutToSave.exercises = program.exercises.map((ex: any, i: number) => {
-                const rawSets = w.sets[i] || [];
-                return {
-                  name: ex.name,
-                  sets: rawSets.map((s: any) => ({
-                    weight: Number(s[0]) || 0,
-                    reps: Number(s[1]) || 0
-                  }))
-                };
-              });
-              workoutToSave.notes = typeof w.notes === 'object' ? Object.values(w.notes).join('\n') : (w.notes || '');
-            } else if (w.exercises) {
-              // Already has exercises, just use them
-              workoutToSave.exercises = w.exercises;
-              workoutToSave.notes = typeof w.notes === 'object' ? Object.values(w.notes).join('\n') : (w.notes || '');
-            } else {
-              // Fallback for unknown structure
-              workoutToSave.exercises = [];
-              workoutToSave.notes = '';
+            // Import measurements
+            if (measurementsToImport.length > 0) {
+              for (const m of measurementsToImport) {
+                const { id, ...data } = m;
+                const cleanMeasurement = Object.fromEntries(
+                  Object.entries({ ...data, userId: user.uid }).filter(([_, v]) => v !== undefined)
+                );
+                await addDoc(collection(db, 'measurements'), cleanMeasurement);
+                count++;
+              }
             }
 
-            await addDoc(collection(db, 'workouts'), workoutToSave);
-            count++;
-          }
-        }
-        
-        // Import measurements
-        if (measurementsToImport.length > 0) {
-          for (const m of measurementsToImport) {
-            const { id, ...data } = m;
-            await addDoc(collection(db, 'measurements'), { ...data, userId: user.uid });
-            count++;
-          }
-        }
-
-        // Import strength
-        if (strengthToImport.length > 0) {
-          for (const s of strengthToImport) {
-            const { id, ...data } = s;
-            await addDoc(collection(db, 'strength'), { ...data, userId: user.uid });
-            count++;
-          }
-        }
+            // Import strength
+            if (strengthToImport.length > 0) {
+              for (const s of strengthToImport) {
+                const { id, ...data } = s;
+                const cleanStrength = Object.fromEntries(
+                  Object.entries({ ...data, userId: user.uid }).filter(([_, v]) => v !== undefined)
+                );
+                await addDoc(collection(db, 'strength'), cleanStrength);
+                count++;
+              }
+            }
 
         if (count > 0) {
           alert(`✓ Импорт завершен! Загружено записей: ${count}`);
@@ -698,6 +1017,17 @@ function AppContent() {
               setCurrentNotes={setCurrentNotes}
               onFinish={handleFinishWorkout}
               workouts={workouts}
+              programData={programData}
+              onEditProgram={() => setShowProgramEditor(true)}
+              onReset={() => {
+                if(confirm('Сбросить текущий прогресс тренировки?')) {
+                  setCurrentDay(Object.keys(programData)[0]);
+                  setCheckedExercises([]);
+                  setCurrentSets({});
+                  setCurrentNotes({});
+                }
+              }}
+              isLoading={isWorkoutStateLoading}
             />
           )}
           {activeTab === 'coach' && (
@@ -709,6 +1039,7 @@ function AppContent() {
               setMessages={setCoachMessages}
               isLoading={isCoachLoading}
               setIsLoading={setIsCoachLoading}
+              programData={programData}
             />
           )}
           {activeTab === 'progress' && (
@@ -716,6 +1047,7 @@ function AppContent() {
               workouts={workouts} 
               onDelete={handleDeleteWorkout}
               onUpdate={handleUpdateWorkout}
+              programData={programData}
             />
           )}
           {activeTab === 'strength' && (
@@ -724,6 +1056,7 @@ function AppContent() {
               onSave={handleSaveStrength}
               onDelete={handleDeleteStrength}
               onUpdate={handleUpdateStrength}
+              programData={programData}
             />
           )}
           {activeTab === 'tech' && (
@@ -736,8 +1069,20 @@ function AppContent() {
               onLogout={handleLogout}
               measurements={measurements}
               onSaveWeight={handleSaveWeight}
+              onDeleteWeight={handleDeleteWeight}
+              onUpdateWeight={handleUpdateWeight}
               onExportData={handleExportData}
               onImportData={handleImportData}
+            />
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {showProgramEditor && (
+            <ProgramEditor 
+              program={programData} 
+              onSave={handleUpdateProgram} 
+              onClose={() => setShowProgramEditor(false)} 
             />
           )}
         </AnimatePresence>
@@ -756,6 +1101,352 @@ function AppContent() {
   );
 }
 
+function ProgramEditor({ program, onSave, onClose }: { program: any; onSave: (data: any) => Promise<void>; onClose: () => void }) {
+  const [localProgram, setLocalProgram] = useState(JSON.parse(JSON.stringify(program)));
+  const [selectedDay, setSelectedDay] = useState(Object.keys(localProgram)[0]);
+  const [localDayName, setLocalDayName] = useState(Object.keys(localProgram)[0]);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    setLocalDayName(selectedDay);
+  }, [selectedDay]);
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      await onSave(localProgram);
+      onClose();
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const addExercise = (day: string) => {
+    const newExercise = {
+      name: 'Новое упражнение',
+      scheme: '3 x 12',
+      sets: 3,
+      tip: ''
+    };
+    setLocalProgram((prev: any) => ({
+      ...prev,
+      [day]: {
+        ...prev[day],
+        exercises: [...prev[day].exercises, newExercise]
+      }
+    }));
+  };
+
+  const removeExercise = (day: string, idx: number) => {
+    setLocalProgram((prev: any) => ({
+      ...prev,
+      [day]: {
+        ...prev[day],
+        exercises: prev[day].exercises.filter((_: any, i: number) => i !== idx)
+      }
+    }));
+  };
+
+  const updateExercise = (day: string, idx: number, field: string, value: any) => {
+    setLocalProgram((prev: any) => ({
+      ...prev,
+      [day]: {
+        ...prev[day],
+        exercises: prev[day].exercises.map((ex: any, i: number) => 
+          i === idx ? { ...ex, [field]: value } : ex
+        )
+      }
+    }));
+  };
+
+  const updateDay = (day: string, field: string, value: any) => {
+    setLocalProgram((prev: any) => ({
+      ...prev,
+      [day]: { ...prev[day], [field]: value }
+    }));
+  };
+
+  const renameDay = (oldName: string, newName: string) => {
+    if (!newName || newName === oldName) {
+      setLocalDayName(oldName);
+      return;
+    }
+    // Prevent duplicate names
+    if (localProgram[newName]) {
+      setLocalDayName(oldName);
+      return;
+    }
+    
+    setLocalProgram((prev: any) => {
+      const entries = Object.entries(prev);
+      const updatedEntries = entries.map(([key, value]) => {
+        if (key === oldName) return [newName, value];
+        return [key, value];
+      });
+      return Object.fromEntries(updatedEntries);
+    });
+    setSelectedDay(newName);
+  };
+
+  const moveDay = (day: string, direction: 'left' | 'right') => {
+    setLocalProgram((prev: any) => {
+      const keys = Object.keys(prev);
+      const index = keys.indexOf(day);
+      const newKeys = [...keys];
+      
+      if (direction === 'left' && index > 0) {
+        [newKeys[index - 1], newKeys[index]] = [newKeys[index], newKeys[index - 1]];
+      } else if (direction === 'right' && index < keys.length - 1) {
+        [newKeys[index + 1], newKeys[index]] = [newKeys[index], newKeys[index + 1]];
+      } else {
+        return prev;
+      }
+      
+      const newProgram: any = {};
+      newKeys.forEach(k => { newProgram[k] = prev[k]; });
+      return newProgram;
+    });
+  };
+
+  const addDay = () => {
+    const dayNum = Object.keys(localProgram).length + 1;
+    const dayName = `День ${dayNum}`;
+    setLocalProgram((prev: any) => ({
+      ...prev,
+      [dayName]: {
+        subtitle: 'Новый день',
+        exercises: []
+      }
+    }));
+    setSelectedDay(dayName);
+  };
+
+  const removeDay = (day: string) => {
+    if (Object.keys(localProgram).length <= 1) return;
+    const updated = { ...localProgram };
+    delete updated[day];
+    setLocalProgram(updated);
+    setSelectedDay(Object.keys(updated)[0]);
+  };
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }} 
+      animate={{ opacity: 1 }} 
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
+    >
+      <motion.div 
+        initial={{ scale: 0.9, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        className="bg-bg w-full max-w-2xl max-h-[90vh] rounded-[40px] shadow-2xl flex flex-col overflow-hidden border border-border"
+      >
+        <div className="p-6 border-b border-border flex justify-between items-center bg-white">
+          <div>
+            <h2 className="text-xl font-display font-bold text-accent">Редактор программы</h2>
+            <p className="text-[10px] text-muted uppercase font-bold tracking-widest mt-1">Настрой тренировки под себя</p>
+          </div>
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => {
+                if (window.confirm('Восстановить программу по умолчанию? Все текущие изменения будут потеряны.')) {
+                  setLocalProgram(JSON.parse(JSON.stringify(PROGRAM)));
+                  setSelectedDay(Object.keys(PROGRAM)[0]);
+                }
+              }}
+              className="text-[10px] font-bold text-accent uppercase tracking-widest hover:underline"
+            >
+              Сбросить
+            </button>
+            <button onClick={onClose} className="p-2 text-muted hover:text-accent transition-colors">
+              <X size={24} />
+            </button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-8 no-scrollbar">
+          {/* Day Selector */}
+          <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+            {Object.keys(localProgram).map(day => (
+              <div key={day} className="relative group flex-shrink-0">
+                <button 
+                  onClick={() => setSelectedDay(day)}
+                  className={`px-4 py-2 rounded-xl text-[11px] font-bold border transition-all ${
+                    selectedDay === day ? 'bg-accent text-white border-accent' : 'bg-white border-border text-muted'
+                  }`}
+                >
+                  {day}
+                </button>
+                <div className={`absolute -top-1 -right-1 flex gap-0.5 transition-opacity ${
+                  selectedDay === day ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                }`}>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); moveDay(day, 'left'); }}
+                    className="bg-accent text-white rounded-full p-0.5 shadow-sm hover:scale-110 transition-transform"
+                    title="Влево"
+                  >
+                    <ChevronLeft size={10} />
+                  </button>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); moveDay(day, 'right'); }}
+                    className="bg-accent text-white rounded-full p-0.5 shadow-sm hover:scale-110 transition-transform"
+                    title="Вправо"
+                  >
+                    <ChevronRight size={10} />
+                  </button>
+                  {Object.keys(localProgram).length > 1 && (
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); removeDay(day); }}
+                      className="bg-red-500 text-white rounded-full p-0.5 shadow-sm hover:scale-110 transition-transform"
+                      title="Удалить"
+                    >
+                      <X size={10} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+            <button 
+              onClick={addDay}
+              className="px-4 py-2 rounded-xl text-[11px] font-bold border border-dashed border-accent text-accent bg-accent/5 hover:bg-accent/10 transition-all flex items-center gap-1"
+            >
+              <Plus size={14} /> День
+            </button>
+          </div>
+
+          {/* Day Settings */}
+          <div className="bg-white p-6 rounded-3xl border border-border shadow-sm space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-[10px] text-muted uppercase font-bold tracking-widest ml-1">Название дня</label>
+                <input 
+                  type="text" 
+                  value={localDayName || ''}
+                  onChange={(e) => setLocalDayName(e.target.value)}
+                  onBlur={() => renameDay(selectedDay, localDayName)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      renameDay(selectedDay, localDayName);
+                      (e.target as HTMLInputElement).blur();
+                    }
+                  }}
+                  placeholder="Например: День 1 или Кардио"
+                  className="w-full py-3 px-4 bg-surface-2/50 border-2 border-border rounded-xl focus:border-accent outline-none transition-all text-sm font-bold"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] text-muted uppercase font-bold tracking-widest ml-1">Подзаголовок дня</label>
+                <input 
+                  type="text" 
+                  value={localProgram[selectedDay]?.subtitle || ''}
+                  onChange={(e) => updateDay(selectedDay, 'subtitle', e.target.value)}
+                  placeholder="Например: Ягодицы + Ноги"
+                  className="w-full py-3 px-4 bg-surface-2/50 border-2 border-border rounded-xl focus:border-accent outline-none transition-all text-sm font-medium"
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+               <input 
+                type="checkbox" 
+                id="isCardio"
+                checked={localProgram[selectedDay]?.isCardio || false}
+                onChange={(e) => updateDay(selectedDay, 'isCardio', e.target.checked)}
+                className="w-5 h-5 accent-accent"
+              />
+              <label htmlFor="isCardio" className="text-sm font-bold text-text">Это кардио-день</label>
+            </div>
+          </div>
+
+          {/* Exercises */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-accent uppercase tracking-widest">Упражнения</h3>
+              <button 
+                onClick={() => addExercise(selectedDay)}
+                className="flex items-center gap-1 text-accent text-[10px] font-bold uppercase tracking-wider hover:underline"
+              >
+                <Plus size={14} /> Добавить
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {localProgram[selectedDay].exercises.map((ex: any, idx: number) => (
+                <div key={idx} className="bg-white p-4 rounded-2xl border border-border shadow-sm space-y-3 relative group">
+                  <button 
+                    onClick={() => removeExercise(selectedDay, idx)}
+                    className="absolute top-2 right-2 p-1 text-muted hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[9px] text-muted uppercase font-bold ml-1">Название</label>
+                      <input 
+                        type="text" 
+                        value={ex.name || ''}
+                        onChange={(e) => updateExercise(selectedDay, idx, 'name', e.target.value)}
+                        className="w-full py-2 px-3 bg-surface-2/30 border border-border rounded-lg text-xs font-bold focus:border-accent outline-none"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] text-muted uppercase font-bold ml-1">Схема (напр. 3 x 12)</label>
+                      <input 
+                        type="text" 
+                        value={ex.scheme || ''}
+                        onChange={(e) => updateExercise(selectedDay, idx, 'scheme', e.target.value)}
+                        className="w-full py-2 px-3 bg-surface-2/30 border border-border rounded-lg text-xs font-bold focus:border-accent outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[9px] text-muted uppercase font-bold ml-1">Кол-во сетов</label>
+                      <input 
+                        type="number" 
+                        value={ex.sets || 0}
+                        onChange={(e) => updateExercise(selectedDay, idx, 'sets', parseInt(e.target.value) || 0)}
+                        className="w-full py-2 px-3 bg-surface-2/30 border border-border rounded-lg text-xs font-bold focus:border-accent outline-none"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] text-muted uppercase font-bold ml-1">Подсказка (необязательно)</label>
+                      <input 
+                        type="text" 
+                        value={ex.tip || ''}
+                        onChange={(e) => updateExercise(selectedDay, idx, 'tip', e.target.value)}
+                        className="w-full py-2 px-3 bg-surface-2/30 border border-border rounded-lg text-xs font-bold focus:border-accent outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="p-6 border-t border-border bg-white flex gap-3">
+          <button 
+            onClick={onClose}
+            className="flex-1 py-4 border-2 border-border text-muted font-bold rounded-2xl hover:bg-surface-2 transition-all"
+          >
+            Отмена
+          </button>
+          <button 
+            onClick={handleSave}
+            disabled={isSaving}
+            className="flex-[2] py-4 bg-accent text-white font-bold rounded-2xl shadow-lg hover:shadow-xl active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+          >
+            {isSaving ? <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}><Settings size={20} /></motion.div> : <Save size={20} />}
+            {isSaving ? 'Сохранение...' : 'Сохранить программу'}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 // --- COACH PAGE ---
 
 function CoachPage({ 
@@ -765,17 +1456,29 @@ function CoachPage({
   messages,
   setMessages,
   isLoading,
-  setIsLoading
+  setIsLoading,
+  programData
 }: any) {
   const [input, setInput] = useState('');
   const [images, setImages] = useState<string[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const apiKey = process.env.GEMINI_API_KEY || 
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [manualApiKey, setManualApiKey] = useState(() => localStorage.getItem('gemini_api_key') || '');
+  const [showApiKeySettings, setShowApiKeySettings] = useState(false);
+  const [tempApiKey, setTempApiKey] = useState(manualApiKey);
+
+  const apiKey = manualApiKey || 
+                 process.env.GEMINI_API_KEY || 
                  (import.meta as any).env?.VITE_GEMINI_API_KEY || 
                  process.env.GEMINI_API_KEY_2 || 
                  (import.meta as any).env?.VITE_GEMINI_API_KEY_2;
-  const [showClearConfirm, setShowClearConfirm] = useState(false);
+
+  const handleSaveApiKey = () => {
+    localStorage.setItem('gemini_api_key', tempApiKey);
+    setManualApiKey(tempApiKey);
+    setShowApiKeySettings(false);
+  };
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -845,13 +1548,16 @@ function CoachPage({
     setIsLoading(true);
 
     try {
-      const currentApiKey = process.env.GEMINI_API_KEY || 
-                           (import.meta as any).env?.VITE_GEMINI_API_KEY || 
-                           process.env.GEMINI_API_KEY_2 || 
-                           (import.meta as any).env?.VITE_GEMINI_API_KEY_2;
+      const currentApiKey = 
+        manualApiKey ||
+        (import.meta as any).env?.VITE_GEMINI_API_KEY || 
+        (process.env as any).GEMINI_API_KEY || 
+        (window as any).GEMINI_API_KEY ||
+        (import.meta as any).env?.VITE_GEMINI_API_KEY_2 || 
+        (process.env as any).GEMINI_API_KEY_2;
       
-      if (!currentApiKey) {
-        throw new Error("API key is missing");
+      if (!currentApiKey || currentApiKey === "undefined" || currentApiKey === "") {
+        throw new Error("API ключ не найден. Пожалуйста, проверьте настройки.");
       }
       
       const ai = new GoogleGenAI({ apiKey: currentApiKey });
@@ -859,25 +1565,24 @@ function CoachPage({
       const parts: any[] = [
         { text: `Ты — экспертный ИИ-фитнес-тренер. Твоя задача — проводить объективный и конструктивный анализ данных пользователя.
         
-        ПРАВИЛА ОТВЕТА (КРИТИЧЕСКИ ВАЖНО):
-        1. ЧИТАБЕЛЬНОСТЬ: Обязательно используй ПУСТЫЕ СТРОКИ между разделами и пунктами.
-        2. СТРУКТУРА: Используй четкие заголовки (### Название раздела).
-        3. ЛАКОНИЧНОСТЬ: Минимум вводных слов, только факты и цифры.
-        4. ОФОРМЛЕНИЕ: Не выделяй жирным всё подряд. Только ключевые цифры или термины.
-        5. ОБЪЕКТИВНОСТЬ: Опирайся строго на предоставленные переменные.
+        ПРАВИЛА ОТВЕТА:
+        1. ЧИТАБЕЛЬНОСТЬ: Обязательно используй ПУСТЫЕ СТРОКИ между разделами.
+        2. СТРУКТУРА: Используй заголовки ###.
+        3. ЛАКОНИЧНОСТЬ: Минимум вводных слов.
+        
+        ИНСТРУМЕНТЫ:
+        - Ты можешь изменять программу тренировок пользователя с помощью функции update_training_program.
+        - Если пользователь просит добавить упражнение, изменить веса или схему — используй этот инструмент.
+        - При изменении программы ВСЕГДА сохраняй структуру JSON: { "День 1": { "subtitle": "...", "exercises": [...] }, ... }
         
         ПЕРЕМЕННЫЕ ПОЛЬЗОВАТЕЛЯ:
-        - ТРЕНИРОВКИ (workouts): ${JSON.stringify(workouts.slice(-10))}
-        - ЗАМЕРЫ (measurements): ${JSON.stringify(measurements.slice(-10))} (вес, возраст, параметры)
-        - СИЛОВЫЕ РЕКОРДЫ (strengthRecords): ${JSON.stringify(strengthRecords)}
-        
-        ПРИОРИТЕТЫ АНАЛИЗА:
-        1. ВОЗРАСТ (из замеров): Адаптация нагрузок и восстановления.
-        2. КОМПЛЕКЦИЯ: Вес, % жира, замеры.
-        3. ПРОГРЕССИЯ: Сравнение последних тренировок.
+        - ТРЕНИРОВКИ: ${JSON.stringify(workouts.slice(-5))}
+        - ЗАМЕРЫ: ${JSON.stringify(measurements.slice(-5))}
+        - СИЛОВЫЕ РЕКОРДЫ: ${JSON.stringify(strengthRecords)}
+        - ТЕКУЩАЯ ПРОГРАММА: ${JSON.stringify(programData)}
         
         История чата:
-        ${messages.map((m: any) => `${m.role === 'user' ? 'Пользователь' : 'Тренер'}: ${m.content}`).join('\n')}
+        ${messages.slice(-10).map((m: any) => `${m.role === 'user' ? 'Пользователь' : 'Тренер'}: ${m.content}`).join('\n')}
         
         Новое сообщение пользователя: ${textToSend}` }
       ];
@@ -897,9 +1602,53 @@ function CoachPage({
         model: "gemini-3-flash-preview",
         contents: [{ role: 'user', parts }],
         config: {
-          systemInstruction: "Ты — профессиональный ИИ-фитнес-тренер. Твой стиль: объективный, конструктивный, лаконичный. ФОРМАТИРОВАНИЕ: Обязательно разделяй блоки текста ПУСТЫМИ СТРОКАМИ. Используй заголовки ### для разделов. Избегай сплошного текста и избыточного выделения жирным. СОДЕРЖАНИЕ: Анализируй только предоставленные данные. Если данных (возраст, вес) не хватает для точного совета — укажи на это. Не называй себя никаким именем.",
+          systemInstruction: "Ты — профессиональный ИИ-фитнес-тренер. Твой стиль: объективный, конструктивный, лаконичный. Ты можешь менять программу тренировок пользователя, если он об этом просит или если ты видишь необходимость в адаптации на основе его прогресса.",
+          tools: [{
+            functionDeclarations: [{
+              name: "update_training_program",
+              description: "Обновить программу тренировок пользователя. Принимает полный объект программы.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  newData: {
+                    type: Type.OBJECT,
+                    description: "Новый объект программы тренировок. Ключи - названия дней, значения - объекты с subtitle и списком exercises."
+                  }
+                },
+                required: ["newData"]
+              }
+            }]
+          }]
         }
       });
+
+      if (response.functionCalls) {
+        for (const call of response.functionCalls) {
+          if (call.name === 'update_training_program') {
+            const { newData } = call.args as any;
+            // We need to call the parent's update function
+            // Since CoachPage is a subcomponent, we should pass the update function to it
+            if (typeof (window as any).handleUpdateProgramFromCoach === 'function') {
+              await (window as any).handleUpdateProgramFromCoach(newData);
+              
+              // Send a follow-up message to confirm
+              const confirmResponse = await ai.models.generateContent({
+                model: "gemini-3-flash-preview",
+                contents: [
+                  { role: 'user', parts },
+                  { role: 'model', parts: [{ functionCall: call }] },
+                  { role: 'user', parts: [{ functionResponse: { name: call.name, response: { status: 'success' }, id: call.id } }] }
+                ]
+              });
+              
+              const aiMsg = { role: 'assistant', content: confirmResponse.text || "Программа успешно обновлена! 💪" };
+              setMessages([...newMessages, aiMsg]);
+              setIsLoading(false);
+              return;
+            }
+          }
+        }
+      }
 
       const aiMsg = { role: 'assistant', content: response.text || "Извини, я не смогла сформулировать ответ. Попробуй еще раз! 🧘‍♀️" };
       setMessages([...newMessages, aiMsg]);
@@ -940,6 +1689,55 @@ function CoachPage({
             <TrendingUp size={14} />
             Анализ
           </button>
+          <div className="relative">
+            <button 
+              onClick={() => setShowApiKeySettings(!showApiKeySettings)}
+              className={`p-2 rounded-xl border transition-all ${manualApiKey ? 'bg-accent/10 text-accent border-accent/20' : 'bg-surface-2 text-muted border-border'}`}
+              title="Настройки API"
+            >
+              <Settings size={16} />
+            </button>
+            {showApiKeySettings && (
+              <div className="absolute right-0 top-full mt-2 w-72 bg-white border border-border rounded-2xl shadow-xl p-5 z-50 animate-in fade-in slide-in-from-top-2">
+                <h4 className="text-xs font-bold text-text mb-2 uppercase tracking-wider">Настройки Gemini API</h4>
+                <p className="text-[10px] text-muted mb-4">Если ИИ не работает, вставьте свой ключ API. Его можно получить бесплатно на <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-accent underline">AI Studio</a>.</p>
+                <input 
+                  type="password"
+                  value={tempApiKey}
+                  onChange={(e) => setTempApiKey(e.target.value)}
+                  placeholder="Вставьте API ключ..."
+                  className="w-full bg-surface-2 border-2 border-border p-3 rounded-xl text-xs font-bold mb-4 outline-none focus:border-accent"
+                />
+                <div className="flex gap-2">
+                  <button 
+                    onClick={handleSaveApiKey}
+                    className="flex-1 py-2 bg-accent text-white text-[10px] font-bold uppercase rounded-lg shadow-sm"
+                  >
+                    Сохранить
+                  </button>
+                  <button 
+                    onClick={() => setShowApiKeySettings(false)}
+                    className="flex-1 py-2 bg-surface-2 text-text text-[10px] font-bold uppercase rounded-lg"
+                  >
+                    Отмена
+                  </button>
+                </div>
+                {manualApiKey && (
+                  <button 
+                    onClick={() => {
+                      localStorage.removeItem('gemini_api_key');
+                      setManualApiKey('');
+                      setTempApiKey('');
+                      setShowApiKeySettings(false);
+                    }}
+                    className="w-full mt-3 py-2 text-[9px] text-red-500 font-bold uppercase hover:bg-red-50 rounded-lg transition-all"
+                  >
+                    Сбросить ключ
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
           <div className="relative">
             <button 
               onClick={() => setShowClearConfirm(!showClearConfirm)}
@@ -1003,7 +1801,13 @@ function CoachPage({
                   ))}
                 </div>
               )}
-              {m.content}
+              {m.role === 'assistant' ? (
+                <div className="markdown-body">
+                  <ReactMarkdown>{m.content}</ReactMarkdown>
+                </div>
+              ) : (
+                m.content
+              )}
             </div>
           </div>
         ))}
@@ -1084,6 +1888,8 @@ function ProfilePage({
   onLogout,
   measurements,
   onSaveWeight,
+  onDeleteWeight,
+  onUpdateWeight,
   onExportData,
   onImportData
 }: { 
@@ -1092,6 +1898,8 @@ function ProfilePage({
   onLogout: () => void;
   measurements: WeightMeasurement[];
   onSaveWeight: (data: any) => void;
+  onDeleteWeight: (id: string) => void;
+  onUpdateWeight: (id: string, data: any) => void;
   onExportData: () => void;
   onImportData: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }) {
@@ -1235,6 +2043,8 @@ function ProfilePage({
         <WeightPage 
           measurements={measurements} 
           onSave={onSaveWeight} 
+          onDelete={onDeleteWeight}
+          onUpdate={onUpdateWeight}
           onExportData={onExportData}
           onImportData={onImportData}
         />
@@ -1285,9 +2095,34 @@ function TodayPage({
   currentNotes,
   setCurrentNotes,
   onFinish,
-  workouts
+  workouts,
+  programData,
+  onEditProgram,
+  onReset,
+  isLoading
 }: any) {
-  const program = PROGRAM[currentDay];
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 opacity-50">
+        <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: 'linear' }} className="w-8 h-8 border-4 border-accent border-t-transparent rounded-full mb-4" />
+        <p className="text-xs font-bold uppercase tracking-widest">Загрузка плана...</p>
+      </div>
+    );
+  }
+
+  const program = programData[currentDay];
+  if (!program) {
+    return (
+      <div className="text-center py-20 bg-white rounded-[40px] border border-border shadow-sm">
+        <AlertCircle className="mx-auto mb-4 text-red-500" size={32} />
+        <p className="text-sm font-bold text-text mb-4">День не найден в программе</p>
+        <button onClick={() => setCurrentDay(Object.keys(programData)[0])} className="px-6 py-3 bg-accent text-white rounded-2xl text-xs font-bold uppercase tracking-widest">
+          Вернуться к началу
+        </button>
+      </div>
+    );
+  }
+
   const total = program.exercises.length;
   const done = checkedExercises.length;
   const pct = Math.round((done / total) * 100);
@@ -1296,8 +2131,21 @@ function TodayPage({
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-lg font-display font-bold text-accent">Твой план</h2>
+        <div className="flex gap-2">
+          <button 
+            onClick={onEditProgram}
+            className="flex items-center gap-2 px-3 py-1.5 bg-accent/10 text-accent rounded-xl text-[10px] font-bold uppercase tracking-wider hover:bg-accent/20 transition-all"
+          >
+            <Settings size={14} />
+            Изменить программу
+          </button>
+        </div>
+      </div>
+
       <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-        {Object.keys(PROGRAM).map(day => (
+        {Object.keys(programData).map(day => (
           <button 
             key={day}
             onClick={() => setCurrentDay(day)}
@@ -1306,7 +2154,7 @@ function TodayPage({
             }`}
           >
             {day}<br/>
-            <span className={`text-[9px] ${currentDay === day ? 'text-white/80' : 'text-muted/70'}`}>{PROGRAM[day].subtitle}</span>
+            <span className={`text-[9px] ${currentDay === day ? 'text-white/80' : 'text-muted/70'}`}>{programData[day].subtitle}</span>
           </button>
         ))}
       </div>
@@ -1337,6 +2185,7 @@ function TodayPage({
             key={idx}
             exercise={ex}
             index={idx}
+            isCardioDay={program.isCardio}
             isChecked={checkedExercises.includes(idx)}
             onCheck={() => {
               setCheckedExercises((prev: number[]) => 
@@ -1347,11 +2196,17 @@ function TodayPage({
             onUpdateSet={(sIdx: number, field: number, val: string) => {
               setCurrentSets((prev: any) => {
                 const updated = { ...prev };
+                const isCardio = ex.isCardio || program.isCardio;
+                const fieldCount = isCardio ? (ex.fields?.length || 3) : 2;
+                
                 if (!updated[idx]) {
-                  const fieldCount = ex.isCardio ? (ex.fields?.length || 1) : 2;
                   updated[idx] = Array(ex.sets).fill(null).map(() => Array(fieldCount).fill(''));
                 }
-                updated[idx][sIdx][field] = val;
+                
+                updated[idx] = updated[idx].map((set: any[], i: number) => 
+                  i === sIdx ? set.map((v, f) => f === field ? val : v) : set
+                );
+                
                 return updated;
               });
             }}
@@ -1380,8 +2235,9 @@ function TodayPage({
   );
 }
 
-function ExerciseCard({ exercise, index, isChecked, onCheck, sets, onUpdateSet, note, onUpdateNote }: any) {
+function ExerciseCard({ exercise, index, isCardioDay, isChecked, onCheck, sets, onUpdateSet, note, onUpdateNote }: any) {
   const [isOpen, setIsOpen] = useState(false);
+  const isCardio = exercise.isCardio || isCardioDay;
 
   return (
     <div className={`bg-white border-2 rounded-3xl overflow-hidden transition-all shadow-sm ${isChecked ? 'border-done bg-done/5' : 'border-border'}`}>
@@ -1391,7 +2247,10 @@ function ExerciseCard({ exercise, index, isChecked, onCheck, sets, onUpdateSet, 
         </div>
         <div className="flex-1">
           <div className={`text-[14px] font-bold ${isChecked ? 'text-done line-through opacity-60' : 'text-text'}`}>{exercise.name}</div>
-          <div className="text-[10px] text-accent-2 font-bold uppercase tracking-wider">{exercise.scheme}</div>
+          <div className="flex items-center gap-2">
+            <div className="text-[10px] text-accent-2 font-bold uppercase tracking-wider">{exercise.scheme}</div>
+            {isCardio && <span className="text-[9px] bg-accent/10 text-accent px-1.5 py-0.5 rounded-lg font-bold uppercase">Кардио</span>}
+          </div>
           {exercise.tip && <div className="text-[9px] text-muted mt-1 italic">💡 {exercise.tip}</div>}
         </div>
         <button 
@@ -1410,16 +2269,16 @@ function ExerciseCard({ exercise, index, isChecked, onCheck, sets, onUpdateSet, 
                 <div key={sIdx} className="bg-surface-2/50 border border-border rounded-2xl p-3 text-center">
                   <div className="text-[9px] text-muted uppercase font-bold mb-2">Сет {sIdx + 1}</div>
                   <div className="flex items-center justify-center gap-2">
-                    {exercise.isCardio ? (
+                    {isCardio ? (
                       <div className="flex gap-2">
-                        {exercise.fields.map((f: string, fi: number) => (
+                        {(exercise.fields || ["мин", "км", "пульс"]).map((f: string, fi: number) => (
                           <div key={fi} className="flex flex-col items-center">
                             <input 
                               type="number" 
                               step="any"
                               className="w-12 bg-white border-2 border-border text-center text-sm p-2 rounded-xl focus:border-accent outline-none transition-all"
-                              value={sets[0]?.[fi] || ''}
-                              onChange={(e) => onUpdateSet(0, fi, e.target.value)}
+                              value={sets[sIdx]?.[fi] || ''}
+                              onChange={(e) => onUpdateSet(sIdx, fi, e.target.value)}
                             />
                             <span className="text-[8px] text-muted font-bold mt-1 uppercase">{f}</span>
                           </div>
@@ -1457,7 +2316,7 @@ function ExerciseCard({ exercise, index, isChecked, onCheck, sets, onUpdateSet, 
               <textarea 
                 className="w-full bg-surface-2/50 border-2 border-border rounded-2xl p-3 text-[12px] text-text focus:border-accent outline-none h-16 resize-none transition-all"
                 placeholder="Твои мысли, ощущения, победы..."
-                value={note}
+                value={note || ''}
                 onChange={(e) => onUpdateNote(e.target.value)}
               />
               <div className="absolute right-3 bottom-3 text-accent/30"><Dumbbell size={14} /></div>
@@ -1469,7 +2328,7 @@ function ExerciseCard({ exercise, index, isChecked, onCheck, sets, onUpdateSet, 
   );
 }
 
-function ProgressPage({ workouts, onDelete, onUpdate }: { workouts: Workout[]; onDelete: (id: string) => void; onUpdate: (id: string, data: any) => void }) {
+function ProgressPage({ workouts, onDelete, onUpdate, programData }: { workouts: Workout[]; onDelete: (id: string) => void; onUpdate: (id: string, data: any) => void; programData: any }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDate, setEditDate] = useState('');
   const [editDay, setEditDay] = useState('');
@@ -1522,16 +2381,16 @@ function ProgressPage({ workouts, onDelete, onUpdate }: { workouts: Workout[]; o
                     <div className="grid grid-cols-2 gap-2">
                       <input 
                         type="date" 
-                        value={editDate}
+                        value={editDate || ''}
                         onChange={(e) => setEditDate(e.target.value)}
                         className="w-full bg-surface-2 border-2 border-border p-2 rounded-xl text-xs font-bold"
                       />
                       <select 
-                        value={editDay}
+                        value={editDay || ''}
                         onChange={(e) => setEditDay(e.target.value)}
                         className="w-full bg-surface-2 border-2 border-border p-2 rounded-xl text-xs font-bold"
                       >
-                        {Object.keys(PROGRAM).map(day => (
+                        {Object.keys(programData).map(day => (
                           <option key={day} value={day}>{day}</option>
                         ))}
                       </select>
@@ -1548,7 +2407,7 @@ function ProgressPage({ workouts, onDelete, onUpdate }: { workouts: Workout[]; o
                         {format(parseISO(w.date), 'd MMMM · HH:mm', { locale: ru })}
                       </div>
                       <div className="text-[15px] font-bold text-text">
-                        {w.day} — {PROGRAM[w.day]?.subtitle}
+                        {w.day} — {programData[w.day]?.subtitle}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -1585,7 +2444,7 @@ function StatItem({ value, label }: { value: number; label: string }) {
   );
 }
 
-function StrengthPage({ records, onSave, onDelete, onUpdate }: { records: StrengthRecord[]; onSave: (data: any) => void; onDelete: (id: string) => void; onUpdate: (id: string, data: any) => void }) {
+function StrengthPage({ records, onSave, onDelete, onUpdate, programData }: { records: StrengthRecord[]; onSave: (data: any) => void; onDelete: (id: string) => void; onUpdate: (id: string, data: any) => void; programData: any }) {
   const [exercise, setExercise] = useState('Ягодичный мостик со штангой');
   const [weight, setWeight] = useState('');
   const [reps, setReps] = useState('');
@@ -1631,10 +2490,10 @@ function StrengthPage({ records, onSave, onDelete, onUpdate }: { records: Streng
             value={exercise}
             onChange={(e) => setExercise(e.target.value)}
           >
-            {Object.entries(PROGRAM).map(([day, p]) => (
+            {Object.entries(programData).map(([day, p]: [string, any]) => (
               <optgroup key={day} label={`${day} — ${p.subtitle}`}>
-                {p.exercises.filter(ex => !ex.isCardio && !ex.bodyweight).map(ex => (
-                  <option key={ex.name} value={ex.name}>{ex.name}</option>
+                {p.exercises.filter((ex: any) => !ex.isCardio && !ex.bodyweight).map((ex: any, idx: number) => (
+                  <option key={`${day}-${ex.name}-${idx}`} value={ex.name}>{ex.name}</option>
                 ))}
               </optgroup>
             ))}
@@ -1645,7 +2504,7 @@ function StrengthPage({ records, onSave, onDelete, onUpdate }: { records: Streng
               <input 
                 type="number" 
                 className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
-                value={weight}
+                value={weight || ''}
                 onChange={(e) => setWeight(e.target.value)}
               />
             </div>
@@ -1654,7 +2513,7 @@ function StrengthPage({ records, onSave, onDelete, onUpdate }: { records: Streng
               <input 
                 type="number" 
                 className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
-                value={reps}
+                value={reps || ''}
                 onChange={(e) => setReps(e.target.value)}
               />
             </div>
@@ -1706,20 +2565,20 @@ function StrengthPage({ records, onSave, onDelete, onUpdate }: { records: Streng
 
                   <div className="space-y-2 pt-2 border-t border-border/50">
                     <div className="text-[10px] text-muted uppercase font-bold mb-2">История</div>
-                    {sortedEntries.map(entry => (
-                      <div key={entry.id} className="flex justify-between items-center text-[12px] py-1">
+                    {sortedEntries.map((entry, idx) => (
+                      <div key={entry.id || `${name}-${idx}`} className="flex justify-between items-center text-[12px] py-1">
                         {editingId === entry.id ? (
                           <div className="flex-1 flex gap-2 items-center">
                             <input 
                               type="number" 
-                              value={editWeight}
+                              value={editWeight || ''}
                               onChange={(e) => setEditWeight(e.target.value)}
                               className="w-16 bg-surface-2 border border-border p-1 rounded-lg text-xs font-bold"
                             />
                             <span className="text-muted">кг x</span>
                             <input 
                               type="number" 
-                              value={editReps}
+                              value={editReps || ''}
                               onChange={(e) => setEditReps(e.target.value)}
                               className="w-12 bg-surface-2 border border-border p-1 rounded-lg text-xs font-bold"
                             />
@@ -1756,11 +2615,15 @@ function StrengthPage({ records, onSave, onDelete, onUpdate }: { records: Streng
 function WeightPage({ 
   measurements, 
   onSave,
+  onDelete,
+  onUpdate,
   onExportData,
   onImportData
 }: { 
   measurements: WeightMeasurement[]; 
   onSave: (data: any) => void;
+  onDelete: (id: string) => void;
+  onUpdate: (id: string, data: any) => void;
   onExportData: () => void;
   onImportData: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }) {
@@ -1771,14 +2634,35 @@ function WeightPage({
   const [water, setWater] = useState('');
   const [chest, setChest] = useState('');
   const [waist, setWaist] = useState('');
+  const [waistHigh, setWaistHigh] = useState('');
+  const [waistNavel, setWaistNavel] = useState('');
+  const [waistWidest, setWaistWidest] = useState('');
   const [hips, setHips] = useState('');
   const [bicep, setBicep] = useState('');
   const [thigh, setThigh] = useState('');
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDate, setEditDate] = useState('');
+  const [editWeight, setEditWeight] = useState('');
+  const [editAge, setEditAge] = useState('');
+  const [editFat, setEditFat] = useState('');
+  const [editMuscle, setEditMuscle] = useState('');
+  const [editWater, setEditWater] = useState('');
+  const [editChest, setEditChest] = useState('');
+  const [editWaistHigh, setEditWaistHigh] = useState('');
+  const [editWaistNavel, setEditWaistNavel] = useState('');
+  const [editWaistWidest, setEditWaistWidest] = useState('');
+  const [editHips, setEditHips] = useState('');
+  const [editThigh, setEditThigh] = useState('');
+  const [editBicep, setEditBicep] = useState('');
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSave = () => {
     if (!weight) return;
     onSave({ 
+      date: new Date(date).toISOString(),
       weight: Number(weight), 
       age: age ? Number(age) : undefined,
       fat: fat ? Number(fat) : undefined, 
@@ -1786,6 +2670,9 @@ function WeightPage({
       water: water ? Number(water) : undefined,
       chest: chest ? Number(chest) : undefined,
       waist: waist ? Number(waist) : undefined,
+      waistHigh: waistHigh ? Number(waistHigh) : undefined,
+      waistNavel: waistNavel ? Number(waistNavel) : undefined,
+      waistWidest: waistWidest ? Number(waistWidest) : undefined,
       hips: hips ? Number(hips) : undefined,
       bicep: bicep ? Number(bicep) : undefined,
       thigh: thigh ? Number(thigh) : undefined
@@ -1797,22 +2684,76 @@ function WeightPage({
     setWater('');
     setChest('');
     setWaist('');
+    setWaistHigh('');
+    setWaistNavel('');
+    setWaistWidest('');
     setHips('');
     setBicep('');
     setThigh('');
+    setDate(new Date().toISOString().split('T')[0]);
+  };
+
+  const handleStartEdit = (m: WeightMeasurement) => {
+    setEditingId(m.id || null);
+    setEditDate(m.date.split('T')[0]);
+    setEditWeight(m.weight.toString());
+    setEditAge(m.age?.toString() || '');
+    setEditFat(m.fat?.toString() || '');
+    setEditMuscle(m.muscle?.toString() || '');
+    setEditWater(m.water?.toString() || '');
+    setEditChest(m.chest?.toString() || '');
+    setEditWaistHigh(m.waistHigh?.toString() || '');
+    setEditWaistNavel(m.waistNavel?.toString() || '');
+    setEditWaistWidest(m.waistWidest?.toString() || '');
+    setEditHips(m.hips?.toString() || '');
+    setEditThigh(m.thigh?.toString() || '');
+    setEditBicep(m.bicep?.toString() || '');
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingId) return;
+    onUpdate(editingId, {
+      date: new Date(editDate).toISOString(),
+      weight: Number(editWeight),
+      age: editAge ? Number(editAge) : null,
+      fat: editFat ? Number(editFat) : null,
+      muscle: editMuscle ? Number(editMuscle) : null,
+      water: editWater ? Number(editWater) : null,
+      chest: editChest ? Number(editChest) : null,
+      waistHigh: editWaistHigh ? Number(editWaistHigh) : null,
+      waistNavel: editWaistNavel ? Number(editWaistNavel) : null,
+      waistWidest: editWaistWidest ? Number(editWaistWidest) : null,
+      hips: editHips ? Number(editHips) : null,
+      thigh: editThigh ? Number(editThigh) : null,
+      bicep: editBicep ? Number(editBicep) : null
+    });
+    setEditingId(null);
   };
 
   return (
     <div className="space-y-8">
       <div className="space-y-6">
         <h4 className="text-[10px] text-muted uppercase font-bold tracking-widest">Новый замер</h4>
+        
+        <div className="grid grid-cols-1 gap-4">
+          <div>
+            <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Дата замера</label>
+            <input 
+              type="date" 
+              className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-sm font-bold outline-none focus:border-accent transition-all"
+              value={date || ''}
+              onChange={(e) => setDate(e.target.value)}
+            />
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Вес (кг)</label>
             <input 
               type="number" 
               className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
-              value={weight}
+              value={weight || ''}
               onChange={(e) => setWeight(e.target.value)}
             />
           </div>
@@ -1821,7 +2762,7 @@ function WeightPage({
             <input 
               type="number" 
               className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
-              value={age}
+              value={age || ''}
               onChange={(e) => setAge(e.target.value)}
             />
           </div>
@@ -1830,8 +2771,26 @@ function WeightPage({
             <input 
               type="number" 
               className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
-              value={fat}
+              value={fat || ''}
               onChange={(e) => setFat(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Мышцы (%)</label>
+            <input 
+              type="number" 
+              className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
+              value={muscle || ''}
+              onChange={(e) => setMuscle(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Вода (%)</label>
+            <input 
+              type="number" 
+              className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
+              value={water || ''}
+              onChange={(e) => setWater(e.target.value)}
             />
           </div>
         </div>
@@ -1842,17 +2801,35 @@ function WeightPage({
             <input 
               type="number" 
               className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
-              value={chest}
+              value={chest || ''}
               onChange={(e) => setChest(e.target.value)}
             />
           </div>
           <div>
-            <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Талия (см)</label>
+            <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Талия выс. (см)</label>
             <input 
               type="number" 
               className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
-              value={waist}
-              onChange={(e) => setWaist(e.target.value)}
+              value={waistHigh || ''}
+              onChange={(e) => setWaistHigh(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Талия пупок (см)</label>
+            <input 
+              type="number" 
+              className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
+              value={waistNavel || ''}
+              onChange={(e) => setWaistNavel(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Самое жирное пузо (см)</label>
+            <input 
+              type="number" 
+              className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
+              value={waistWidest || ''}
+              onChange={(e) => setWaistWidest(e.target.value)}
             />
           </div>
           <div>
@@ -1860,17 +2837,8 @@ function WeightPage({
             <input 
               type="number" 
               className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
-              value={hips}
+              value={hips || ''}
               onChange={(e) => setHips(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Бицепс (см)</label>
-            <input 
-              type="number" 
-              className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
-              value={bicep}
-              onChange={(e) => setBicep(e.target.value)}
             />
           </div>
           <div>
@@ -1878,8 +2846,17 @@ function WeightPage({
             <input 
               type="number" 
               className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
-              value={thigh}
+              value={thigh || ''}
               onChange={(e) => setThigh(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Бицепс (см)</label>
+            <input 
+              type="number" 
+              className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
+              value={bicep || ''}
+              onChange={(e) => setBicep(e.target.value)}
             />
           </div>
         </div>
@@ -1928,27 +2905,154 @@ function WeightPage({
           <div className="text-center py-16 bg-white rounded-3xl border-2 border-dashed border-border text-muted text-sm font-medium">Нет записей. Добавь первый! 📏</div>
         ) : (
           <div className="space-y-3">
-            {measurements.map(m => (
+            {[...measurements].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(m => (
               <div key={m.id} className="p-5 bg-surface-2/50 border-2 border-border rounded-3xl shadow-sm hover:border-accent/30 transition-all space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-muted text-[11px] font-bold uppercase tracking-wider">{format(parseISO(m.date), 'd MMM yyyy', { locale: ru })}</span>
-                  <div className="text-right">
-                    <div className="text-accent text-xl font-display font-bold">{m.weight} кг</div>
-                    {m.age && <div className="text-[10px] text-muted font-bold uppercase">{m.age} лет</div>}
+                {editingId === m.id ? (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="col-span-2">
+                        <label className="text-[9px] text-muted uppercase font-bold ml-1">Дата</label>
+                        <input 
+                          type="date" 
+                          value={editDate || ''}
+                          onChange={(e) => setEditDate(e.target.value)}
+                          className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold ml-1">Вес</label>
+                        <input 
+                          type="number" 
+                          value={editWeight || ''}
+                          onChange={(e) => setEditWeight(e.target.value)}
+                          className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold ml-1">Жир %</label>
+                        <input 
+                          type="number" 
+                          value={editFat || ''}
+                          onChange={(e) => setEditFat(e.target.value)}
+                          className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold ml-1">Мышцы %</label>
+                        <input 
+                          type="number" 
+                          value={editMuscle || ''}
+                          onChange={(e) => setEditMuscle(e.target.value)}
+                          className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold ml-1">Вода %</label>
+                        <input 
+                          type="number" 
+                          value={editWater || ''}
+                          onChange={(e) => setEditWater(e.target.value)}
+                          className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold ml-1">Грудь</label>
+                        <input 
+                          type="number" 
+                          value={editChest || ''}
+                          onChange={(e) => setEditChest(e.target.value)}
+                          className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold ml-1">Талия выс</label>
+                        <input 
+                          type="number" 
+                          value={editWaistHigh || ''}
+                          onChange={(e) => setEditWaistHigh(e.target.value)}
+                          className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold ml-1">Талия пупок</label>
+                        <input 
+                          type="number" 
+                          value={editWaistNavel || ''}
+                          onChange={(e) => setEditWaistNavel(e.target.value)}
+                          className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold ml-1">Самое жирное</label>
+                        <input 
+                          type="number" 
+                          value={editWaistWidest || ''}
+                          onChange={(e) => setEditWaistWidest(e.target.value)}
+                          className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold ml-1">Бёдра</label>
+                        <input 
+                          type="number" 
+                          value={editHips || ''}
+                          onChange={(e) => setEditHips(e.target.value)}
+                          className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold ml-1">Бедро</label>
+                        <input 
+                          type="number" 
+                          value={editThigh || ''}
+                          onChange={(e) => setEditThigh(e.target.value)}
+                          className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold ml-1">Бицепс</label>
+                        <input 
+                          type="number" 
+                          value={editBicep || ''}
+                          onChange={(e) => setEditBicep(e.target.value)}
+                          className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={handleSaveEdit} className="flex-1 py-2 bg-done text-white text-[10px] font-bold uppercase rounded-xl">Сохранить</button>
+                      <button onClick={() => setEditingId(null)} className="flex-1 py-2 bg-surface-3 text-text text-[10px] font-bold uppercase rounded-xl">Отмена</button>
+                    </div>
                   </div>
-                </div>
-                {(m.chest || m.waist || m.hips || m.bicep || m.thigh) && (
-                  <div className="grid grid-cols-3 gap-2 text-[10px] text-muted font-bold uppercase">
-                    {m.chest && <span>Грудь: {m.chest}</span>}
-                    {m.waist && <span>Талия: {m.waist}</span>}
-                    {m.hips && <span>Бёдра: {m.hips}</span>}
-                    {m.bicep && <span>Бицепс: {m.bicep}</span>}
-                    {m.thigh && <span>Бедро: {m.thigh}</span>}
-                  </div>
+                ) : (
+                  <>
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted text-[11px] font-bold uppercase tracking-wider">{format(parseISO(m.date), 'd MMM yyyy', { locale: ru })}</span>
+                      <div className="flex items-center gap-2">
+                        <div className="text-right mr-2">
+                          <div className="text-accent text-xl font-display font-bold">{m.weight} кг</div>
+                        </div>
+                        <button onClick={() => handleStartEdit(m)} className="p-2 text-muted hover:text-accent transition-colors"><Edit2 size={16}/></button>
+                        <button onClick={() => onDelete(m.id!)} className="p-2 text-muted hover:text-red-500 transition-colors"><Trash2 size={16}/></button>
+                      </div>
+                    </div>
+                    {(m.chest || m.waist || m.waistHigh || m.waistNavel || m.waistWidest || m.hips || m.bicep || m.thigh) && (
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[10px] text-muted font-bold uppercase">
+                        {m.chest && <span>Грудь: {m.chest}</span>}
+                        {m.waist && <span>Талия: {m.waist}</span>}
+                        {m.waistHigh && <span>Талия выс: {m.waistHigh}</span>}
+                        {m.waistNavel && <span>Талия пупок: {m.waistNavel}</span>}
+                        {m.waistWidest && <span>Самое жирное: {m.waistWidest}</span>}
+                        {m.hips && <span>Бёдра: {m.hips}</span>}
+                        {m.bicep && <span>Бицепс: {m.bicep}</span>}
+                        {m.thigh && <span>Бедро: {m.thigh}</span>}
+                      </div>
+                    )}
+                    <div className="text-[10px] text-muted font-bold uppercase opacity-60">
+                      {m.fat ? `${m.fat}% жир` : ''} {m.muscle ? `· ${m.muscle}% мышцы` : ''}
+                    </div>
+                  </>
                 )}
-                <div className="text-[10px] text-muted font-bold uppercase opacity-60">
-                  {m.fat ? `${m.fat}% жир` : ''} {m.muscle ? `· ${m.muscle}% мышцы` : ''}
-                </div>
               </div>
             ))}
           </div>
