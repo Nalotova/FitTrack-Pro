@@ -1,0 +1,92 @@
+{
+  "entities": {
+    "Workout": {
+      "title": "Workout",
+      "description": "A single workout session.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "The UID of the user who performed the workout." },
+        "date": { "type": "string", "format": "date-time", "description": "The date and time of the workout." },
+        "name": { "type": "string", "description": "The name of the workout (e.g., 'Leg Day')." },
+        "exercises": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string", "description": "The name of the exercise." },
+              "sets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "reps": { "type": "number", "description": "Number of repetitions." },
+                    "weight": { "type": "number", "description": "Weight used in kg/lbs." }
+                  },
+                  "required": ["reps", "weight"]
+                }
+              }
+            },
+            "required": ["name", "sets"]
+          }
+        }
+      },
+      "required": ["userId", "date", "name", "exercises"]
+    },
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Basic user information.",
+      "type": "object",
+      "properties": {
+        "displayName": { "type": "string", "description": "The user's display name." },
+        "email": { "type": "string", "format": "email", "description": "The user's email address." },
+        "photoURL": { "type": "string", "description": "The user's profile picture URL." }
+      },
+      "required": ["displayName", "email"]
+    },
+    "WeightMeasurement": {
+      "title": "Weight Measurement",
+      "description": "User's body weight and composition data.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "weight": { "type": "number" },
+        "fat": { "type": "number" },
+        "muscle": { "type": "number" },
+        "water": { "type": "number" }
+      },
+      "required": ["userId", "date", "weight"]
+    },
+    "StrengthRecord": {
+      "title": "Strength Record",
+      "description": "User's personal bests or working weights for specific exercises.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "exercise": { "type": "string" },
+        "weight": { "type": "number" },
+        "reps": { "type": "number" }
+      },
+      "required": ["userId", "date", "exercise", "weight", "reps"]
+    }
+  },
+  "firestore": {
+    "/workouts/{workoutId}": {
+      "schema": "Workout",
+      "description": "Collection of workout sessions."
+    },
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile information."
+    },
+    "/measurements/{measurementId}": {
+      "schema": "WeightMeasurement",
+      "description": "Body composition history."
+    },
+    "/strength/{recordId}": {
+      "schema": "StrengthRecord",
+      "description": "Exercise weight history."
+    }
+  }
+}

@@ -1,0 +1,131 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: userId (UID from Firebase Auth)
+    // Fields:
+    //   - displayName: string (required)
+    //   - email: string (required, email format)
+    //   - photoURL: string (optional)
+    //
+    // Collection: workouts
+    // Document ID: workoutId (auto-generated)
+    // Fields:
+    //   - userId: string (required, matches owner)
+    //   - date: string (required, ISO 8601 format)
+    //   - name: string (required, 1-100 chars)
+    //   - exercises: list (required, max 50 items)
+    //     - name: string (required)
+    //     - sets: list (required)
+    //       - reps: number (required, positive)
+    //       - weight: number (required, non-negative)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "es.nalyotova@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUserProfile(data) {
+      return data.keys().hasOnly(['displayName', 'email', 'photoURL', 'role']) &&
+             data.displayName is string && data.displayName.size() > 0 && data.displayName.size() < 100 &&
+             data.email is string && isValidEmail(data.email) &&
+             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() < 1000)) &&
+             (!('role' in data) || (data.role is string && data.role in ['admin', 'user']));
+    }
+
+    function isValidWorkout(data) {
+      return data.keys().hasAll(['userId', 'date', 'day', 'exercises']) &&
+             data.keys().hasOnly(['userId', 'date', 'day', 'exercises', 'notes']) &&
+             data.userId == request.auth.uid &&
+             isValidDateString(data.date) &&
+             data.day is string &&
+             data.exercises is list && data.exercises.size() <= 50;
+    }
+
+    function isValidMeasurement(data) {
+      return data.keys().hasAll(['userId', 'date', 'weight']) &&
+             data.keys().hasOnly(['userId', 'date', 'weight', 'fat', 'muscle', 'water']) &&
+             data.userId == request.auth.uid &&
+             isValidDateString(data.date) &&
+             data.weight is number;
+    }
+
+    function isValidStrengthRecord(data) {
+      return data.keys().hasAll(['userId', 'date', 'exercise', 'weight', 'reps']) &&
+             data.keys().hasOnly(['userId', 'date', 'exercise', 'weight', 'reps']) &&
+             data.userId == request.auth.uid &&
+             isValidDateString(data.date) &&
+             data.exercise is string &&
+             data.weight is number &&
+             data.reps is number;
+    }
+
+    // ===============================================================
+    // Match Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUserProfile(request.resource.data) && (!('role' in request.resource.data) || request.resource.data.role == 'user');
+      allow update: if isOwner(userId) && isValidUserProfile(request.resource.data) && (request.resource.data.role == resource.data.role || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /workouts/{workoutId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && isValidWorkout(request.resource.data);
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && isValidWorkout(request.resource.data);
+      allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    match /measurements/{measurementId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && isValidMeasurement(request.resource.data);
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && isValidMeasurement(request.resource.data);
+      allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    match /strength/{recordId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && isValidStrengthRecord(request.resource.data);
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && isValidStrengthRecord(request.resource.data);
+      allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}
