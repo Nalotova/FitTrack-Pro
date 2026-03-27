@@ -73,10 +73,13 @@ service cloud.firestore {
     // ===============================================================
 
     function isValidUserProfile(data) {
-      return data.displayName is string && data.displayName.size() > 0 &&
+      return data.keys().hasAll(['displayName', 'email']) &&
+             data.keys().hasOnly(['displayName', 'email', 'photoURL', 'role', 'reminders', 'createdAt']) &&
+             data.displayName is string && data.displayName.size() > 0 &&
              data.email is string &&
              (!('photoURL' in data) || data.photoURL is string) &&
              (!('role' in data) || (data.role is string && data.role in ['admin', 'user'])) &&
+             (!('createdAt' in data) || isValidDateString(data.createdAt)) &&
              (!('reminders' in data) || (data.reminders is list && data.reminders.size() <= 20));
     }
 

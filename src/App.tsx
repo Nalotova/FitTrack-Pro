@@ -437,6 +437,12 @@ function AppContent() {
   const [showProgramEditor, setShowProgramEditor] = useState(false);
   const [showTechEditor, setShowTechEditor] = useState(false);
   const [notification, setNotification] = useState<{show: boolean, title: string, message: string} | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
   
   // Today's state
   const [currentDay, setCurrentDay] = useState('День 1');
@@ -467,15 +473,15 @@ function AppContent() {
     const unsub = onSnapshot(doc(db, 'current_workout', user.uid), (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
-        setCurrentDay(data.currentDay || 'День 1');
-        setCheckedExercises(data.checkedExercises || []);
-        setCurrentSets(data.currentSets || {});
-        setCurrentNotes(data.currentNotes || {});
+        setCurrentDay(prev => prev !== data.currentDay ? (data.currentDay || 'День 1') : prev);
+        setCheckedExercises(prev => JSON.stringify(prev) !== JSON.stringify(data.checkedExercises || []) ? (data.checkedExercises || []) : prev);
+        setCurrentSets(prev => JSON.stringify(prev) !== JSON.stringify(data.currentSets || {}) ? (data.currentSets || {}) : prev);
+        setCurrentNotes(prev => JSON.stringify(prev) !== JSON.stringify(data.currentNotes || {}) ? (data.currentNotes || {}) : prev);
       }
       setIsWorkoutStateLoading(false);
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, `current_workout/${user.uid}`);
       setIsWorkoutStateLoading(false);
+      handleFirestoreError(error, OperationType.GET, `current_workout/${user.uid}`);
     });
     return () => unsub();
   }, [user]);
@@ -597,8 +603,8 @@ function AppContent() {
       }
       setLoading(false);
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
       setLoading(false);
+      handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
     });
     return () => unsubProfile();
   }, [user]);
@@ -647,8 +653,8 @@ function AppContent() {
       setProgramData(finalData);
       setIsProgramLoading(false);
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, `programs/${user.uid}`);
       setIsProgramLoading(false);
+      handleFirestoreError(error, OperationType.GET, `programs/${user.uid}`);
     });
 
     const unsubTech = onSnapshot(
@@ -667,8 +673,8 @@ function AppContent() {
         setIsTechLoading(false);
       },
       (error) => {
-        handleFirestoreError(error, OperationType.LIST, 'tech');
         setIsTechLoading(false);
+        handleFirestoreError(error, OperationType.LIST, 'tech');
       }
     );
 
@@ -808,20 +814,31 @@ function AppContent() {
         currentNotes: {}
       });
       
-      alert('🎉 Тренировка завершена! Отличная работа!');
+      setNotification({
+        show: true,
+        title: 'Отличная работа!',
+        message: '🎉 Тренировка завершена!'
+      });
       setActiveTab('progress');
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'workouts');
     }
   };
 
-  const handleDeleteWorkout = async (id: string) => {
-    if (!confirm('Вы уверены, что хотите удалить эту запись?')) return;
-    try {
-      await deleteDoc(doc(db, 'workouts', id));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `workouts/${id}`);
-    }
+  const handleDeleteWorkout = (id: string) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Удаление тренировки',
+      message: 'Вы уверены, что хотите удалить эту запись?',
+      onConfirm: async () => {
+        try {
+          await deleteDoc(doc(db, 'workouts', id));
+        } catch (error) {
+          handleFirestoreError(error, OperationType.DELETE, `workouts/${id}`);
+        }
+        setConfirmDialog(null);
+      }
+    });
   };
 
   const handleUpdateTech = async (items: TechItem[]) => {
@@ -886,13 +903,20 @@ function AppContent() {
     }
   };
 
-  const handleDeleteWeight = async (id: string) => {
-    if (!confirm('Вы уверены, что хотите удалить этот замер?')) return;
-    try {
-      await deleteDoc(doc(db, 'measurements', id));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `measurements/${id}`);
-    }
+  const handleDeleteWeight = (id: string) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Удаление замера',
+      message: 'Вы уверены, что хотите удалить этот замер?',
+      onConfirm: async () => {
+        try {
+          await deleteDoc(doc(db, 'measurements', id));
+        } catch (error) {
+          handleFirestoreError(error, OperationType.DELETE, `measurements/${id}`);
+        }
+        setConfirmDialog(null);
+      }
+    });
   };
 
   const handleUpdateWeight = async (id: string, data: Partial<WeightMeasurement>) => {
@@ -961,13 +985,20 @@ function AppContent() {
     }
   };
 
-  const handleDeleteStrength = async (id: string) => {
-    if (!confirm('Вы уверены, что хотите удалить эту запись?')) return;
-    try {
-      await deleteDoc(doc(db, 'strength', id));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `strength/${id}`);
-    }
+  const handleDeleteStrength = (id: string) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Удаление записи',
+      message: 'Вы уверены, что хотите удалить эту запись?',
+      onConfirm: async () => {
+        try {
+          await deleteDoc(doc(db, 'strength', id));
+        } catch (error) {
+          handleFirestoreError(error, OperationType.DELETE, `strength/${id}`);
+        }
+        setConfirmDialog(null);
+      }
+    });
   };
 
   const handleUpdateStrength = async (id: string, data: Partial<StrengthRecord>) => {
@@ -1030,7 +1061,11 @@ function AppContent() {
       URL.revokeObjectURL(url);
     } catch (error) {
       console.error("Export failed:", error);
-      alert('Ошибка при экспорте данных.');
+      setNotification({
+        show: true,
+        title: 'Ошибка',
+        message: 'Ошибка при экспорте данных.'
+      });
     }
   };
 
@@ -1119,13 +1154,25 @@ function AppContent() {
             }
 
         if (count > 0) {
-          alert(`✓ Импорт завершен! Загружено записей: ${count}`);
+          setNotification({
+            show: true,
+            title: 'Успешно',
+            message: `✓ Импорт завершен! Загружено записей: ${count}`
+          });
         } else {
-          alert('⚠ Файл распознан, но данных для импорта не найдено. Проверьте структуру JSON.');
+          setNotification({
+            show: true,
+            title: 'Внимание',
+            message: '⚠ Файл распознан, но данных для импорта не найдено. Проверьте структуру JSON.'
+          });
         }
       } catch (error) {
         console.error("Import failed:", error);
-        alert('Ошибка при импорте данных. Убедитесь, что файл имеет формат JSON.');
+        setNotification({
+          show: true,
+          title: 'Ошибка',
+          message: 'Ошибка при импорте данных. Убедитесь, что файл имеет формат JSON.'
+        });
       }
     };
     reader.readAsText(file);
@@ -1228,17 +1275,29 @@ function AppContent() {
               workouts={workouts}
               programData={programData}
               onEditProgram={() => setShowProgramEditor(true)}
-              onReset={async () => {
+              onReset={() => {
                 if (Object.keys(programData).length === 0) {
-                  if(confirm('Программа пуста. Восстановить стандартную программу?')) {
-                    await handleUpdateProgram(PROGRAM);
-                  }
+                  setConfirmDialog({
+                    isOpen: true,
+                    title: 'Восстановление программы',
+                    message: 'Программа пуста. Восстановить стандартную программу?',
+                    onConfirm: async () => {
+                      await handleUpdateProgram(PROGRAM);
+                      setConfirmDialog(null);
+                    }
+                  });
                 } else {
-                  if(confirm('Сбросить текущий прогресс тренировки?')) {
-                    setCheckedExercises([]);
-                    setCurrentSets({});
-                    setCurrentNotes({});
-                  }
+                  setConfirmDialog({
+                    isOpen: true,
+                    title: 'Сброс прогресса',
+                    message: 'Сбросить текущий прогресс тренировки?',
+                    onConfirm: () => {
+                      setCheckedExercises([]);
+                      setCurrentSets({});
+                      setCurrentNotes({});
+                      setConfirmDialog(null);
+                    }
+                  });
                 }
               }}
               isLoading={isWorkoutStateLoading || isProgramLoading}
@@ -1256,6 +1315,7 @@ function AppContent() {
               programData={programData}
               techData={techData}
               userProfile={userProfile}
+              setNotification={setNotification}
             />
           )}
           {activeTab === 'progress' && (
@@ -1293,6 +1353,7 @@ function AppContent() {
               onUpdateWeight={handleUpdateWeight}
               onExportData={handleExportData}
               onImportData={handleImportData}
+              setNotification={setNotification}
             />
           )}
         </AnimatePresence>
@@ -1340,6 +1401,41 @@ function AppContent() {
               >
                 Понятно!
               </button>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {confirmDialog?.isOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              className="bg-white w-full max-w-sm rounded-[40px] p-8 shadow-2xl text-center border-4 border-accent/20"
+            >
+              <div className="w-20 h-20 bg-accent/10 rounded-[30px] flex items-center justify-center text-accent mx-auto mb-6">
+                <AlertTriangle size={40} className="animate-pulse" />
+              </div>
+              <h3 className="text-2xl font-display font-bold text-accent mb-2">{confirmDialog.title}</h3>
+              <p className="text-muted mb-8 leading-relaxed">{confirmDialog.message}</p>
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => setConfirmDialog(null)}
+                  className="flex-1 py-4 bg-gray-100 text-gray-600 font-bold rounded-2xl active:scale-95 transition-all"
+                >
+                  Отмена
+                </button>
+                <button 
+                  onClick={confirmDialog.onConfirm}
+                  className="flex-1 py-4 bg-accent text-white font-bold rounded-2xl shadow-lg active:scale-95 transition-all"
+                >
+                  Да
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}
@@ -1739,7 +1835,8 @@ function CoachPage({
   setIsLoading,
   programData,
   techData,
-  userProfile
+  userProfile,
+  setNotification
 }: any) {
   const [input, setInput] = useState('');
   const [images, setImages] = useState<string[]>([]);
@@ -2274,7 +2371,11 @@ function CoachPage({
       }, 1000);
     } catch (err) {
       console.error("Error accessing microphone:", err);
-      alert("Не удалось получить доступ к микрофону. Проверьте разрешения в браузере.");
+      setNotification({
+        show: true,
+        title: 'Ошибка',
+        message: 'Не удалось получить доступ к микрофону. Проверьте разрешения в браузере.'
+      });
     }
   };
 
@@ -2536,7 +2637,8 @@ function ProfilePage({
   onDeleteWeight,
   onUpdateWeight,
   onExportData,
-  onImportData
+  onImportData,
+  setNotification
 }: { 
   profile: UserProfile | null; 
   onUpdate: (data: any) => Promise<void>; 
@@ -2547,6 +2649,7 @@ function ProfilePage({
   onUpdateWeight: (id: string, data: any) => void;
   onExportData: () => void;
   onImportData: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  setNotification: (n: any) => void;
 }) {
   const [name, setName] = useState(profile?.displayName || '');
   const [isSaving, setIsSaving] = useState(false);
@@ -2600,7 +2703,11 @@ function ProfilePage({
 
   const handleSaveName = async () => {
     if (!name.trim()) {
-      alert("Пожалуйста, введи своё имя");
+      setNotification({
+        show: true,
+        title: 'Внимание',
+        message: 'Пожалуйста, введи своё имя'
+      });
       return;
     }
     setIsSaving(true);
