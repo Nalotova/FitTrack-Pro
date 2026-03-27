@@ -12,6 +12,10 @@ service cloud.firestore {
     //   - displayName: string (required)
     //   - email: string (required, email format)
     //   - photoURL: string (optional)
+    //   - reminders: list (optional)
+    //     - day: string (required)
+    //     - time: string (required)
+    //     - label: string (optional)
     //
     // Collection: workouts
     // Document ID: workoutId (auto-generated)
@@ -42,7 +46,7 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() &&
         (
-          (request.auth.token.email == "es.nalyotova@gmail.com" && request.auth.token.email_verified == true) ||
+          (('email' in request.auth.token && request.auth.token.email == "es.nalyotova@gmail.com" && 'email_verified' in request.auth.token && request.auth.token.email_verified == true)) ||
           (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
         );
@@ -56,17 +60,24 @@ service cloud.firestore {
       return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
     }
 
+    function isValidReminder(reminder) {
+      return reminder.keys().hasAll(['day', 'time']) &&
+             reminder.keys().hasOnly(['day', 'time', 'label']) &&
+             reminder.day is string && reminder.day.size() > 0 &&
+             reminder.time is string && reminder.time.size() > 0 &&
+             (!('label' in reminder) || (reminder.label is string && reminder.label.size() < 200));
+    }
+
     // ===============================================================
     // Domain Validators
     // ===============================================================
 
     function isValidUserProfile(data) {
-      return data.keys().hasOnly(['displayName', 'email', 'photoURL', 'role', 'createdAt']) &&
-             data.displayName is string && data.displayName.size() > 0 && data.displayName.size() < 100 &&
-             data.email is string && isValidEmail(data.email) &&
-             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() < 1000000)) &&
+      return data.displayName is string && data.displayName.size() > 0 &&
+             data.email is string &&
+             (!('photoURL' in data) || data.photoURL is string) &&
              (!('role' in data) || (data.role is string && data.role in ['admin', 'user'])) &&
-             (!('createdAt' in data) || isValidDateString(data.createdAt));
+             (!('reminders' in data) || (data.reminders is list && data.reminders.size() <= 20));
     }
 
     function isValidWorkout(data) {
@@ -80,7 +91,7 @@ service cloud.firestore {
 
     function isValidMeasurement(data) {
       return data.keys().hasAll(['userId', 'date', 'weight']) &&
-             data.keys().hasOnly(['userId', 'date', 'weight', 'age', 'fat', 'muscle', 'water', 'chest', 'waist', 'waistHigh', 'waistNavel', 'waistWidest', 'hips', 'bicep', 'thigh']) &&
+             data.keys().hasOnly(['userId', 'date', 'weight', 'age', 'fat', 'muscle', 'water', 'chest', 'waist', 'waistHigh', 'waistNavel', 'waistWidest', 'hips', 'bicep', 'thigh', 'bmi', 'visceralFat', 'skeletalMuscleIndex', 'waistHipRatio', 'bodyType', 'bodyShape', 'bmr', 'boneMass', 'protein', 'fatFreeMass', 'biologicalAge', 'heartRate']) &&
              data.userId == request.auth.uid &&
              isValidDateString(data.date) &&
              data.weight is number &&
@@ -95,7 +106,19 @@ service cloud.firestore {
              (!('waistWidest' in data) || data.waistWidest is number || data.waistWidest == null) &&
              (!('hips' in data) || data.hips is number || data.hips == null) &&
              (!('bicep' in data) || data.bicep is number || data.bicep == null) &&
-             (!('thigh' in data) || data.thigh is number || data.thigh == null);
+             (!('thigh' in data) || data.thigh is number || data.thigh == null) &&
+             (!('bmi' in data) || data.bmi is number || data.bmi == null) &&
+             (!('visceralFat' in data) || data.visceralFat is number || data.visceralFat == null) &&
+             (!('skeletalMuscleIndex' in data) || data.skeletalMuscleIndex is number || data.skeletalMuscleIndex == null) &&
+             (!('waistHipRatio' in data) || data.waistHipRatio is number || data.waistHipRatio == null) &&
+             (!('bodyType' in data) || data.bodyType is string || data.bodyType == null) &&
+             (!('bodyShape' in data) || data.bodyShape is string || data.bodyShape == null) &&
+             (!('bmr' in data) || data.bmr is number || data.bmr == null) &&
+             (!('boneMass' in data) || data.boneMass is number || data.boneMass == null) &&
+             (!('protein' in data) || data.protein is number || data.protein == null) &&
+             (!('fatFreeMass' in data) || data.fatFreeMass is number || data.fatFreeMass == null) &&
+             (!('biologicalAge' in data) || data.biologicalAge is number || data.biologicalAge == null) &&
+             (!('heartRate' in data) || data.heartRate is number || data.heartRate == null);
     }
 
     function isValidStrengthRecord(data) {

@@ -40,7 +40,9 @@ import {
   Camera,
   Settings,
   RotateCcw,
-  Bell
+  Bell,
+  Mic,
+  Square
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
@@ -126,6 +128,18 @@ interface WeightMeasurement {
   hips?: number;
   bicep?: number;
   thigh?: number;
+  bmi?: number;
+  visceralFat?: number;
+  skeletalMuscleIndex?: number;
+  waistHipRatio?: number;
+  bodyType?: string;
+  bodyShape?: string;
+  bmr?: number;
+  boneMass?: number;
+  protein?: number;
+  fatFreeMass?: number;
+  biologicalAge?: number;
+  heartRate?: number;
 }
 
 interface StrengthRecord {
@@ -137,17 +151,11 @@ interface StrengthRecord {
   reps: number;
 }
 
-interface WorkoutReminder {
-  day: string; // "Monday", "Tuesday", etc.
-  time: string; // "HH:mm"
-}
-
 interface UserProfile {
   displayName: string;
   email: string;
   photoURL?: string;
   role: 'user' | 'admin';
-  reminders?: WorkoutReminder[];
 }
 
 // Program Data
@@ -404,6 +412,10 @@ class ErrorBoundary extends React.Component<any, any> {
   }
 }
 
+const DAYS_OF_WEEK = [
+  'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'
+];
+
 // Main App Component
 function AppContent() {
   const [user, setUser] = useState<User | null>(null);
@@ -424,6 +436,7 @@ function AppContent() {
   const [isTechLoading, setIsTechLoading] = useState(true);
   const [showProgramEditor, setShowProgramEditor] = useState(false);
   const [showTechEditor, setShowTechEditor] = useState(false);
+  const [notification, setNotification] = useState<{show: boolean, title: string, message: string} | null>(null);
   
   // Today's state
   const [currentDay, setCurrentDay] = useState('День 1');
@@ -431,6 +444,19 @@ function AppContent() {
   const [currentSets, setCurrentSets] = useState<Record<number, any[][]>>({});
   const [currentNotes, setCurrentNotes] = useState<Record<number, string>>({});
   const [isWorkoutStateLoading, setIsWorkoutStateLoading] = useState(true);
+
+  // Auth Listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      setUser(currentUser);
+      if (currentUser) {
+        await syncUserProfile(currentUser);
+      } else {
+        setLoading(false);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Persistence for Today's state
   useEffect(() => {
@@ -558,25 +584,13 @@ function AppContent() {
     }
   };
 
-  // Auth Listener
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      if (!currentUser) {
-        setUserProfile(null);
-        setLoading(false);
-      } else {
-        syncUserProfile(currentUser);
-      }
-    });
-    return () => unsubscribe();
-  }, []);
-
   // Profile Listener
   useEffect(() => {
     if (!user) return;
     (window as any).handleUpdateProgramFromCoach = handleUpdateProgram;
     (window as any).handleUpdateTechFromCoach = handleUpdateTech;
+    (window as any).handleUpdateProfileFromCoach = handleUpdateProfile;
+    (window as any).handleSaveWeightFromCoach = handleSaveWeight;
     const unsubProfile = onSnapshot(doc(db, 'users', user.uid), (snapshot) => {
       if (snapshot.exists()) {
         setUserProfile(snapshot.data() as UserProfile);
@@ -711,19 +725,25 @@ function AppContent() {
     const userRef = doc(db, 'users', currentUser.uid);
     try {
       const docSnap = await getDoc(userRef);
-      if (!docSnap.exists()) {
-        await setDoc(userRef, {
-          displayName: currentUser.displayName || 'Анонимный пользователь',
-          email: currentUser.email || '',
-          photoURL: currentUser.photoURL || '',
-          role: 'user',
-          createdAt: new Date().toISOString()
-        });
+      const userData = docSnap.exists() ? docSnap.data() : null;
+      
+      const updates: any = {};
+      if (!userData) {
+        updates.displayName = currentUser.displayName || 'Анонимный пользователь';
+        updates.email = currentUser.email || '';
+        updates.photoURL = currentUser.photoURL || '';
+        updates.role = 'user';
+        updates.createdAt = new Date().toISOString();
       } else {
-        // Just update email if it changed, but don't touch displayName/photoURL
-        await setDoc(userRef, {
-          email: currentUser.email || ''
-        }, { merge: true });
+        // If name or photo are missing in Firestore but available in Auth, restore them
+        if (!userData.displayName && currentUser.displayName) updates.displayName = currentUser.displayName;
+        if (!userData.photoURL && currentUser.photoURL) updates.photoURL = currentUser.photoURL;
+        // Always ensure email is up to date
+        if (userData.email !== currentUser.email) updates.email = currentUser.email || '';
+      }
+
+      if (Object.keys(updates).length > 0) {
+        await setDoc(userRef, updates, { merge: true });
       }
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `users/${currentUser.uid}`);
@@ -830,14 +850,36 @@ function AppContent() {
   const handleSaveWeight = async (data: Partial<WeightMeasurement>) => {
     if (!user) return;
     try {
-      // Filter out undefined values
+      const numberFields = ['weight', 'age', 'fat', 'muscle', 'water', 'chest', 'waist', 'waistHigh', 'waistNavel', 'waistWidest', 'hips', 'bicep', 'thigh', 'bmi', 'visceralFat', 'skeletalMuscleIndex', 'waistHipRatio', 'bmr', 'boneMass', 'protein', 'fatFreeMass', 'biologicalAge', 'heartRate'];
+      const allowedFields = ['userId', 'date', 'weight', 'age', 'fat', 'muscle', 'water', 'chest', 'waist', 'waistHigh', 'waistNavel', 'waistWidest', 'hips', 'bicep', 'thigh', 'bmi', 'visceralFat', 'skeletalMuscleIndex', 'waistHipRatio', 'bodyType', 'bodyShape', 'bmr', 'boneMass', 'protein', 'fatFreeMass', 'biologicalAge', 'heartRate'];
+      
+      // Filter out undefined values, 'id', and any fields not in the schema
       const cleanData = Object.fromEntries(
-        Object.entries(data).filter(([_, v]) => v !== undefined)
+        Object.entries(data)
+          .filter(([k, v]) => v !== undefined && k !== 'id' && allowedFields.includes(k))
+          .map(([k, v]) => {
+            if (numberFields.includes(k) && typeof v === 'string') {
+              const num = Number(v);
+              return [k, isNaN(num) ? null : num];
+            }
+            return [k, v];
+          })
+          .filter(([k, v]) => v !== null || k !== 'weight') // Ensure weight is not null
       );
+      
+      let finalDate = new Date().toISOString();
+      if (cleanData.date) {
+        try {
+          finalDate = new Date(cleanData.date).toISOString();
+        } catch (e) {
+          // fallback to current date if parsing fails
+        }
+      }
+
       await addDoc(collection(db, 'measurements'), {
         userId: user.uid,
-        date: new Date().toISOString(),
-        ...cleanData
+        ...cleanData,
+        date: finalDate
       });
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'measurements');
@@ -855,10 +897,31 @@ function AppContent() {
 
   const handleUpdateWeight = async (id: string, data: Partial<WeightMeasurement>) => {
     try {
-      // Filter out undefined values
+      const numberFields = ['weight', 'age', 'fat', 'muscle', 'water', 'chest', 'waist', 'waistHigh', 'waistNavel', 'waistWidest', 'hips', 'bicep', 'thigh', 'bmi', 'visceralFat', 'skeletalMuscleIndex', 'waistHipRatio', 'bmr', 'boneMass', 'protein', 'fatFreeMass', 'biologicalAge', 'heartRate'];
+      const allowedFields = ['userId', 'date', 'weight', 'age', 'fat', 'muscle', 'water', 'chest', 'waist', 'waistHigh', 'waistNavel', 'waistWidest', 'hips', 'bicep', 'thigh', 'bmi', 'visceralFat', 'skeletalMuscleIndex', 'waistHipRatio', 'bodyType', 'bodyShape', 'bmr', 'boneMass', 'protein', 'fatFreeMass', 'biologicalAge', 'heartRate'];
+      
+      // Filter out undefined values, 'id', and any fields not in the schema
       const cleanData = Object.fromEntries(
-        Object.entries(data).filter(([_, v]) => v !== undefined)
+        Object.entries(data)
+          .filter(([k, v]) => v !== undefined && k !== 'id' && allowedFields.includes(k))
+          .map(([k, v]) => {
+            if (numberFields.includes(k) && typeof v === 'string') {
+              const num = Number(v);
+              return [k, isNaN(num) ? null : num];
+            }
+            return [k, v];
+          })
+          .filter(([k, v]) => v !== null || k !== 'weight') // Ensure weight is not null
       );
+      
+      if (cleanData.date) {
+        try {
+          cleanData.date = new Date(cleanData.date).toISOString();
+        } catch (e) {
+          // fallback
+        }
+      }
+
       await setDoc(doc(db, 'measurements', id), cleanData, { merge: true });
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `measurements/${id}`);
@@ -1123,7 +1186,10 @@ function AppContent() {
                 <UserIcon size={20} />
               )}
             </div>
-            <div>
+            <div 
+              className="cursor-pointer"
+              onClick={() => setActiveTab('profile')}
+            >
               <div className="logo text-xl font-display font-bold text-accent leading-none">
                 {userProfile?.displayName || 'Таня'} <span className="text-accent-2">·</span> Тренировки
               </div>
@@ -1189,6 +1255,7 @@ function AppContent() {
               setIsLoading={setIsCoachLoading}
               programData={programData}
               techData={techData}
+              userProfile={userProfile}
             />
           )}
           {activeTab === 'progress' && (
@@ -1247,6 +1314,36 @@ function AppContent() {
           )}
         </AnimatePresence>
       </main>
+
+      {/* Global Notification Modal */}
+      <AnimatePresence>
+        {notification?.show && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              className="bg-white w-full max-w-sm rounded-[40px] p-8 shadow-2xl text-center border-4 border-accent/20"
+            >
+              <div className="w-20 h-20 bg-accent/10 rounded-[30px] flex items-center justify-center text-accent mx-auto mb-6">
+                <Bell size={40} className="animate-bounce" />
+              </div>
+              <h3 className="text-2xl font-display font-bold text-accent mb-2">{notification.title}</h3>
+              <p className="text-muted mb-8 leading-relaxed">{notification.message}</p>
+              <button 
+                onClick={() => setNotification(null)}
+                className="w-full py-4 bg-accent text-white font-bold rounded-2xl shadow-lg active:scale-95 transition-all"
+              >
+                Понятно!
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Logout Button (Floating or in Profile) */}
       <div className="fixed bottom-6 right-6 z-50">
@@ -1641,10 +1738,16 @@ function CoachPage({
   isLoading,
   setIsLoading,
   programData,
-  techData
+  techData,
+  userProfile
 }: any) {
   const [input, setInput] = useState('');
   const [images, setImages] = useState<string[]>([]);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -1726,12 +1829,15 @@ function CoachPage({
     setShowClearConfirm(false);
   };
 
-  const handleSend = async (customInput?: string) => {
+  const handleSend = async (customInput?: string, customImages?: string[], audioBlob?: Blob) => {
     const textToSend = customInput || input;
-    if ((!textToSend.trim() && images.length === 0) || isLoading) return;
+    const imagesToSend = customImages || images;
+    
+    if ((!textToSend.trim() && imagesToSend.length === 0 && !audioBlob) || isLoading) return;
 
     const userMsg: any = { role: 'user', content: textToSend };
-    if (images.length > 0) userMsg.images = images;
+    if (imagesToSend.length > 0) userMsg.images = imagesToSend;
+    if (audioBlob) userMsg.isAudio = true;
 
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
@@ -1754,7 +1860,12 @@ function CoachPage({
       const ai = new GoogleGenAI({ apiKey: currentApiKey });
       const modelName = "gemini-3-flash-preview";
       
-      const systemPrompt = `Ты — профессиональный ИИ-фитнес-тренер. Твой стиль: объективный, конструктивный, лаконичный. Ты анализируешь данные тренировок, замеров и силовых рекордов. Твоя цель — помочь пользователю достичь спортивных результатов безопасно и эффективно. Все данные о теле (замеры, вес) предоставлены исключительно в фитнес-целях.`;
+      const systemPrompt = `Ты — профессиональный ИИ-фитнес-тренер. Твой стиль: объективный, конструктивный, лаконичный. Ты анализируешь данные тренировок, замеров и силовых рекордов. Твоя цель — помочь пользователю достичь спортивных результатов безопасно и эффективно.
+Ты можешь:
+1. Обновлять программу тренировок (инструмент update_training_program).
+2. Обновлять технику выполнения упражнений (инструмент update_tech_data).
+3. Добавлять замеры биоимпеданса (инструмент add_bioimpedance_measurement).
+Все данные о теле (замеры, вес) предоставлены исключительно в фитнес-целях.`;
 
       const dataContext = `
         ПЕРЕМЕННЫЕ ПОЛЬЗОВАТЕЛЯ (ДЛЯ АНАЛИЗА):
@@ -1766,12 +1877,30 @@ function CoachPage({
       `;
 
       const userParts: any[] = [];
-      if (textToSend.trim()) {
+      if (textToSend && typeof textToSend === 'string' && textToSend.trim()) {
         userParts.push({ text: textToSend });
       }
-      
-      if (images.length > 0) {
-        images.forEach(img => {
+
+      if (audioBlob) {
+        const reader = new FileReader();
+        const base64Promise = new Promise<string>((resolve) => {
+          reader.onloadend = () => {
+            const base64 = (reader.result as string).split(',')[1];
+            resolve(base64);
+          };
+        });
+        reader.readAsDataURL(audioBlob);
+        const base64Data = await base64Promise;
+        userParts.push({
+          inlineData: {
+            data: base64Data,
+            mimeType: audioBlob.type || "audio/webm"
+          }
+        });
+      }
+
+      if (imagesToSend.length > 0) {
+        imagesToSend.forEach(img => {
           const parts = img.split(',');
           if (parts.length > 1) {
             const mimeType = img.split(';')[0].split(':')[1] || "image/jpeg";
@@ -1914,6 +2043,41 @@ function CoachPage({
                   },
                   required: ["newItems"]
                 }
+              }, {
+                name: "add_bioimpedance_measurement",
+                description: "Добавить новые замеры тела и биоимпеданса. Используй этот инструмент, когда пользователь присылает скриншот с весов или просит записать новые замеры.",
+                parameters: {
+                  type: Type.OBJECT,
+                  properties: {
+                    date: { type: Type.STRING, description: "Дата замера в формате YYYY-MM-DD" },
+                    weight: { type: Type.NUMBER, description: "Вес в кг" },
+                    age: { type: Type.NUMBER, description: "Возраст" },
+                    fat: { type: Type.NUMBER, description: "Процент жира (%)" },
+                    muscle: { type: Type.NUMBER, description: "Мышечная масса (%)" },
+                    water: { type: Type.NUMBER, description: "Содержание воды (%)" },
+                    bmi: { type: Type.NUMBER, description: "ИМТ (Индекс массы тела)" },
+                    visceralFat: { type: Type.NUMBER, description: "Висцеральный жир" },
+                    skeletalMuscleIndex: { type: Type.NUMBER, description: "Индекс скелетной мускулатуры" },
+                    waistHipRatio: { type: Type.NUMBER, description: "Соотношение талия/бедра" },
+                    bodyType: { type: Type.STRING, description: "Тип телосложения" },
+                    bodyShape: { type: Type.STRING, description: "Форма тела" },
+                    bmr: { type: Type.NUMBER, description: "Базальный метаболизм (BMR / УБМ)" },
+                    boneMass: { type: Type.NUMBER, description: "Костная масса" },
+                    protein: { type: Type.NUMBER, description: "Белок (%)" },
+                    fatFreeMass: { type: Type.NUMBER, description: "Масса тела без жира" },
+                    biologicalAge: { type: Type.NUMBER, description: "Биологический возраст" },
+                    heartRate: { type: Type.NUMBER, description: "Пульс (ЧСС)" },
+                    chest: { type: Type.NUMBER, description: "Грудь (см)" },
+                    waist: { type: Type.NUMBER, description: "Талия (см)" },
+                    waistHigh: { type: Type.NUMBER, description: "Талия (высоко) (см)" },
+                    waistNavel: { type: Type.NUMBER, description: "Талия (по пупку) (см)" },
+                    waistWidest: { type: Type.NUMBER, description: "Талия (широкая часть) (см)" },
+                    hips: { type: Type.NUMBER, description: "Бедра (см)" },
+                    bicep: { type: Type.NUMBER, description: "Бицепс (см)" },
+                    thigh: { type: Type.NUMBER, description: "Бедро (см)" }
+                  },
+                  required: ["date", "weight"]
+                }
               }]
             }]
           }
@@ -2020,6 +2184,38 @@ function CoachPage({
               setIsLoading(false);
               return;
             }
+          } else if (call.name === 'add_bioimpedance_measurement') {
+            const measurementData = call.args as any;
+            
+            if (typeof (window as any).handleSaveWeightFromCoach === 'function') {
+              await (window as any).handleSaveWeightFromCoach(measurementData);
+              
+              const confirmResponse = await ai.models.generateContent({
+                model: modelName,
+                contents: [
+                  ...contents,
+                  response.candidates[0].content,
+                  { 
+                    role: 'user', 
+                    parts: response.functionCalls.map(call => ({ 
+                      functionResponse: { 
+                        name: call.name, 
+                        response: { status: 'success' }, 
+                        id: call.id 
+                      } 
+                    })) 
+                  }
+                ],
+                config: {
+                  systemInstruction: systemPrompt + "\n\nДАННЫЕ ПОЛЬЗОВАТЕЛЯ ДЛЯ АНАЛИЗА:\n" + dataContext,
+                }
+              });
+              
+              const aiMsg = { role: 'assistant', content: confirmResponse.text || "Замеры успешно сохранены! 📊" };
+              setMessages([...newMessages, aiMsg]);
+              setIsLoading(false);
+              return;
+            }
           }
         }
       }
@@ -2046,6 +2242,47 @@ function CoachPage({
       setMessages([...newMessages, { role: 'assistant', content: errorMessage }]);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        handleSend("", [], audioBlob);
+        stream.getTracks().forEach(track => track.stop());
+        if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+        setRecordingTime(0);
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecordingTime(0);
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+    } catch (err) {
+      console.error("Error accessing microphone:", err);
+      alert("Не удалось получить доступ к микрофону. Проверьте разрешения в браузере.");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
     }
   };
 
@@ -2179,6 +2416,12 @@ function CoachPage({
                     ))}
                   </div>
                 )}
+                {m.isAudio && (
+                  <div className="flex items-center gap-2 mb-2 text-white/80 bg-white/10 p-2 rounded-xl">
+                    <Mic size={16} />
+                    <span className="text-xs font-bold uppercase tracking-wider">Голосовое сообщение</span>
+                  </div>
+                )}
                 {m.role === 'assistant' ? (
                   <div className="markdown-body">
                     <ReactMarkdown>{m.content}</ReactMarkdown>
@@ -2230,19 +2473,38 @@ function CoachPage({
         )}
         
         <div className="relative">
-          <input 
-            type="text" 
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Спроси тренера или прикрепи фото..."
-            className="w-full py-4 pl-14 pr-16 bg-white border-2 border-border rounded-2xl focus:border-accent focus:outline-none transition-all shadow-sm font-medium"
-          />
+          {isRecording ? (
+            <div className="w-full py-4 pl-24 pr-16 bg-red-50 border-2 border-red-200 rounded-2xl flex items-center shadow-sm">
+              <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse mr-2"></div>
+              <span className="text-red-500 font-bold font-mono">
+                {Math.floor(recordingTime / 60).toString().padStart(2, '0')}:
+                {(recordingTime % 60).toString().padStart(2, '0')}
+              </span>
+              <span className="ml-2 text-red-400 text-xs uppercase tracking-widest font-bold">Запись...</span>
+            </div>
+          ) : (
+            <input 
+              type="text" 
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Спроси тренера или прикрепи фото..."
+              className="w-full py-4 pl-24 pr-16 bg-white border-2 border-border rounded-2xl focus:border-accent focus:outline-none transition-all shadow-sm font-medium"
+            />
+          )}
           <button 
             type="button"
             onClick={() => fileInputRef.current?.click()}
             className="absolute left-4 top-1/2 -translate-y-1/2 text-muted hover:text-accent transition-all"
           >
             <Camera size={24} />
+          </button>
+          <button 
+            type="button"
+            onClick={isRecording ? stopRecording : startRecording}
+            className={`absolute left-14 top-1/2 -translate-y-1/2 transition-all ${isRecording ? 'text-red-500 animate-pulse' : 'text-muted hover:text-accent'}`}
+            title={isRecording ? "Остановить запись" : "Записать голосовое"}
+          >
+            {isRecording ? <Square size={20} fill="currentColor" /> : <Mic size={24} />}
           </button>
           <input 
             type="file" 
@@ -2287,13 +2549,12 @@ function ProfilePage({
   onImportData: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }) {
   const [name, setName] = useState(profile?.displayName || '');
-  const [reminders, setReminders] = useState<WorkoutReminder[]>(profile?.reminders || []);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const profileFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (profile?.displayName && !name) {
+    if (profile?.displayName !== undefined) {
       setName(profile.displayName);
     }
   }, [profile?.displayName]);
@@ -2338,33 +2599,19 @@ function ProfilePage({
   };
 
   const handleSaveName = async () => {
+    if (!name.trim()) {
+      alert("Пожалуйста, введи своё имя");
+      return;
+    }
     setIsSaving(true);
     try {
-      await onUpdate({ displayName: name, reminders });
+      await onUpdate({ displayName: name });
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } finally {
       setIsSaving(false);
     }
   };
-
-  const addReminder = () => {
-    setReminders([...reminders, { day: 'Понедельник', time: '18:00' }]);
-  };
-
-  const updateReminder = (index: number, field: keyof WorkoutReminder, value: string) => {
-    const updated = [...reminders];
-    updated[index] = { ...updated[index], [field]: value };
-    setReminders(updated);
-  };
-
-  const removeReminder = (index: number) => {
-    setReminders(reminders.filter((_, i) => i !== index));
-  };
-
-  const daysOfWeek = [
-    'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'
-  ];
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} className="space-y-8 pb-12">
@@ -2402,53 +2649,6 @@ function ProfilePage({
               placeholder="Как тебя называть?"
               className="w-full py-4 px-6 bg-surface-2/50 border-2 border-border rounded-2xl focus:border-accent outline-none transition-all font-medium"
             />
-          </div>
-
-          <div className="space-y-6 pt-6 border-t border-border">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-accent/10 rounded-lg flex items-center justify-center text-accent">
-                  <Bell size={16} />
-                </div>
-                <h4 className="text-sm font-bold text-text uppercase tracking-wider">Напоминания</h4>
-              </div>
-              <button 
-                onClick={addReminder}
-                className="text-[10px] font-bold text-accent uppercase tracking-widest hover:underline flex items-center gap-1"
-              >
-                <Plus size={14} /> Добавить
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              {reminders.length === 0 ? (
-                <p className="text-[10px] text-muted italic ml-4">Напоминания не установлены</p>
-              ) : (
-                reminders.map((reminder, idx) => (
-                  <div key={idx} className="flex gap-2 items-center bg-surface-2/50 p-3 rounded-xl border border-border">
-                    <select 
-                      value={reminder.day}
-                      onChange={(e) => updateReminder(idx, 'day', e.target.value)}
-                      className="flex-1 bg-white border border-border rounded-lg p-2 text-xs font-bold outline-none focus:border-accent"
-                    >
-                      {daysOfWeek.map(day => <option key={day} value={day}>{day}</option>)}
-                    </select>
-                    <input 
-                      type="time" 
-                      value={reminder.time}
-                      onChange={(e) => updateReminder(idx, 'time', e.target.value)}
-                      className="w-24 bg-white border border-border rounded-lg p-2 text-xs font-bold outline-none focus:border-accent"
-                    />
-                    <button 
-                      onClick={() => removeReminder(idx)}
-                      className="p-2 text-muted hover:text-red-500 transition-colors"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
           </div>
 
           <button 
@@ -3131,6 +3331,18 @@ function WeightPage({
   const [fat, setFat] = useState('');
   const [muscle, setMuscle] = useState('');
   const [water, setWater] = useState('');
+  const [bmi, setBmi] = useState('');
+  const [visceralFat, setVisceralFat] = useState('');
+  const [skeletalMuscleIndex, setSkeletalMuscleIndex] = useState('');
+  const [waistHipRatio, setWaistHipRatio] = useState('');
+  const [bodyType, setBodyType] = useState('');
+  const [bodyShape, setBodyShape] = useState('');
+  const [bmr, setBmr] = useState('');
+  const [boneMass, setBoneMass] = useState('');
+  const [protein, setProtein] = useState('');
+  const [fatFreeMass, setFatFreeMass] = useState('');
+  const [biologicalAge, setBiologicalAge] = useState('');
+  const [heartRate, setHeartRate] = useState('');
   const [chest, setChest] = useState('');
   const [waist, setWaist] = useState('');
   const [waistHigh, setWaistHigh] = useState('');
@@ -3149,7 +3361,20 @@ function WeightPage({
   const [editFat, setEditFat] = useState('');
   const [editMuscle, setEditMuscle] = useState('');
   const [editWater, setEditWater] = useState('');
+  const [editBmi, setEditBmi] = useState('');
+  const [editVisceralFat, setEditVisceralFat] = useState('');
+  const [editSkeletalMuscleIndex, setEditSkeletalMuscleIndex] = useState('');
+  const [editWaistHipRatio, setEditWaistHipRatio] = useState('');
+  const [editBodyType, setEditBodyType] = useState('');
+  const [editBodyShape, setEditBodyShape] = useState('');
+  const [editBmr, setEditBmr] = useState('');
+  const [editBoneMass, setEditBoneMass] = useState('');
+  const [editProtein, setEditProtein] = useState('');
+  const [editFatFreeMass, setEditFatFreeMass] = useState('');
+  const [editBiologicalAge, setEditBiologicalAge] = useState('');
+  const [editHeartRate, setEditHeartRate] = useState('');
   const [editChest, setEditChest] = useState('');
+  const [editWaist, setEditWaist] = useState('');
   const [editWaistHigh, setEditWaistHigh] = useState('');
   const [editWaistNavel, setEditWaistNavel] = useState('');
   const [editWaistWidest, setEditWaistWidest] = useState('');
@@ -3168,6 +3393,18 @@ function WeightPage({
       fat: fat ? Number(fat) : undefined, 
       muscle: muscle ? Number(muscle) : undefined, 
       water: water ? Number(water) : undefined,
+      bmi: bmi ? Number(bmi) : undefined,
+      visceralFat: visceralFat ? Number(visceralFat) : undefined,
+      skeletalMuscleIndex: skeletalMuscleIndex ? Number(skeletalMuscleIndex) : undefined,
+      waistHipRatio: waistHipRatio ? Number(waistHipRatio) : undefined,
+      bodyType: bodyType || undefined,
+      bodyShape: bodyShape || undefined,
+      bmr: bmr ? Number(bmr) : undefined,
+      boneMass: boneMass ? Number(boneMass) : undefined,
+      protein: protein ? Number(protein) : undefined,
+      fatFreeMass: fatFreeMass ? Number(fatFreeMass) : undefined,
+      biologicalAge: biologicalAge ? Number(biologicalAge) : undefined,
+      heartRate: heartRate ? Number(heartRate) : undefined,
       chest: chest ? Number(chest) : undefined,
       waist: waist ? Number(waist) : undefined,
       waistHigh: waistHigh ? Number(waistHigh) : undefined,
@@ -3182,6 +3419,18 @@ function WeightPage({
     setFat('');
     setMuscle('');
     setWater('');
+    setBmi('');
+    setVisceralFat('');
+    setSkeletalMuscleIndex('');
+    setWaistHipRatio('');
+    setBodyType('');
+    setBodyShape('');
+    setBmr('');
+    setBoneMass('');
+    setProtein('');
+    setFatFreeMass('');
+    setBiologicalAge('');
+    setHeartRate('');
     setChest('');
     setWaist('');
     setWaistHigh('');
@@ -3203,7 +3452,20 @@ function WeightPage({
     setEditFat(m.fat?.toString() || '');
     setEditMuscle(m.muscle?.toString() || '');
     setEditWater(m.water?.toString() || '');
+    setEditBmi(m.bmi?.toString() || '');
+    setEditVisceralFat(m.visceralFat?.toString() || '');
+    setEditSkeletalMuscleIndex(m.skeletalMuscleIndex?.toString() || '');
+    setEditWaistHipRatio(m.waistHipRatio?.toString() || '');
+    setEditBodyType(m.bodyType || '');
+    setEditBodyShape(m.bodyShape || '');
+    setEditBmr(m.bmr?.toString() || '');
+    setEditBoneMass(m.boneMass?.toString() || '');
+    setEditProtein(m.protein?.toString() || '');
+    setEditFatFreeMass(m.fatFreeMass?.toString() || '');
+    setEditBiologicalAge(m.biologicalAge?.toString() || '');
+    setEditHeartRate(m.heartRate?.toString() || '');
     setEditChest(m.chest?.toString() || '');
+    setEditWaist(m.waist?.toString() || '');
     setEditWaistHigh(m.waistHigh?.toString() || '');
     setEditWaistNavel(m.waistNavel?.toString() || '');
     setEditWaistWidest(m.waistWidest?.toString() || '');
@@ -3221,7 +3483,20 @@ function WeightPage({
       fat: editFat ? Number(editFat) : null,
       muscle: editMuscle ? Number(editMuscle) : null,
       water: editWater ? Number(editWater) : null,
+      bmi: editBmi ? Number(editBmi) : null,
+      visceralFat: editVisceralFat ? Number(editVisceralFat) : null,
+      skeletalMuscleIndex: editSkeletalMuscleIndex ? Number(editSkeletalMuscleIndex) : null,
+      waistHipRatio: editWaistHipRatio ? Number(editWaistHipRatio) : null,
+      bodyType: editBodyType || null,
+      bodyShape: editBodyShape || null,
+      bmr: editBmr ? Number(editBmr) : null,
+      boneMass: editBoneMass ? Number(editBoneMass) : null,
+      protein: editProtein ? Number(editProtein) : null,
+      fatFreeMass: editFatFreeMass ? Number(editFatFreeMass) : null,
+      biologicalAge: editBiologicalAge ? Number(editBiologicalAge) : null,
+      heartRate: editHeartRate ? Number(editHeartRate) : null,
       chest: editChest ? Number(editChest) : null,
+      waist: editWaist ? Number(editWaist) : null,
       waistHigh: editWaistHigh ? Number(editWaistHigh) : null,
       waistNavel: editWaistNavel ? Number(editWaistNavel) : null,
       waistWidest: editWaistWidest ? Number(editWaistWidest) : null,
@@ -3242,124 +3517,104 @@ function WeightPage({
             <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Дата замера</label>
             <input 
               type="date" 
-              className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-sm font-bold outline-none focus:border-accent transition-all"
+              className="w-full bg-surface-2 border-2 border-border text-text p-3 rounded-xl text-sm font-bold outline-none focus:border-accent transition-all"
               value={date || ''}
               onChange={(e) => setDate(e.target.value)}
             />
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Вес (кг)</label>
-            <input 
-              type="number" 
-              className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
-              value={weight || ''}
-              onChange={(e) => setWeight(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Возраст</label>
-            <input 
-              type="number" 
-              className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
-              value={age || ''}
-              onChange={(e) => setAge(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Жир (%)</label>
-            <input 
-              type="number" 
-              className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
-              value={fat || ''}
-              onChange={(e) => setFat(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Мышцы (%)</label>
-            <input 
-              type="number" 
-              className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
-              value={muscle || ''}
-              onChange={(e) => setMuscle(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Вода (%)</label>
-            <input 
-              type="number" 
-              className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
-              value={water || ''}
-              onChange={(e) => setWater(e.target.value)}
-            />
+        <div className="space-y-4">
+          <h5 className="text-[10px] text-accent uppercase font-bold tracking-widest border-b border-border pb-1">Основные</h5>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Вес (кг)</label>
+              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={weight || ''} onChange={(e) => setWeight(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Возраст</label>
+              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={age || ''} onChange={(e) => setAge(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">ИМТ</label>
+              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={bmi || ''} onChange={(e) => setBmi(e.target.value)} />
+            </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Грудь (см)</label>
-            <input 
-              type="number" 
-              className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
-              value={chest || ''}
-              onChange={(e) => setChest(e.target.value)}
-            />
+        <div className="space-y-4">
+          <h5 className="text-[10px] text-accent uppercase font-bold tracking-widest border-b border-border pb-1">Биоимпеданс</h5>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Жир (%)</label>
+              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={fat || ''} onChange={(e) => setFat(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Мышцы (%)</label>
+              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={muscle || ''} onChange={(e) => setMuscle(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Вода (%)</label>
+              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={water || ''} onChange={(e) => setWater(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Висц. жир</label>
+              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={visceralFat || ''} onChange={(e) => setVisceralFat(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Кости (кг)</label>
+              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={boneMass || ''} onChange={(e) => setBoneMass(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Белок (%)</label>
+              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={protein || ''} onChange={(e) => setProtein(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">BMR (ккал)</label>
+              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={bmr || ''} onChange={(e) => setBmr(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Биол. возр.</label>
+              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={biologicalAge || ''} onChange={(e) => setBiologicalAge(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Пульс</label>
+              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={heartRate || ''} onChange={(e) => setHeartRate(e.target.value)} />
+            </div>
           </div>
-          <div>
-            <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Талия выс. (см)</label>
-            <input 
-              type="number" 
-              className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
-              value={waistHigh || ''}
-              onChange={(e) => setWaistHigh(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Талия пупок (см)</label>
-            <input 
-              type="number" 
-              className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
-              value={waistNavel || ''}
-              onChange={(e) => setWaistNavel(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Самое жирное пузо (см)</label>
-            <input 
-              type="number" 
-              className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
-              value={waistWidest || ''}
-              onChange={(e) => setWaistWidest(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Бёдра (см)</label>
-            <input 
-              type="number" 
-              className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
-              value={hips || ''}
-              onChange={(e) => setHips(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Бедро (см)</label>
-            <input 
-              type="number" 
-              className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
-              value={thigh || ''}
-              onChange={(e) => setThigh(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Бицепс (см)</label>
-            <input 
-              type="number" 
-              className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
-              value={bicep || ''}
-              onChange={(e) => setBicep(e.target.value)}
-            />
+        </div>
+
+        <div className="space-y-4">
+          <h5 className="text-[10px] text-accent uppercase font-bold tracking-widest border-b border-border pb-1">Объемы</h5>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Грудь (см)</label>
+              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={chest || ''} onChange={(e) => setChest(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Талия выс.</label>
+              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={waistHigh || ''} onChange={(e) => setWaistHigh(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Талия пупок</label>
+              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={waistNavel || ''} onChange={(e) => setWaistNavel(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Талия шир.</label>
+              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={waistWidest || ''} onChange={(e) => setWaistWidest(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Бёдра (см)</label>
+              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={hips || ''} onChange={(e) => setHips(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Бедро (см)</label>
+              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={thigh || ''} onChange={(e) => setThigh(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Бицепс (см)</label>
+              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={bicep || ''} onChange={(e) => setBicep(e.target.value)} />
+            </div>
           </div>
         </div>
 
@@ -3432,114 +3687,97 @@ function WeightPage({
                 >
                   {editingId === m.id ? (
                   <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="col-span-2">
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="col-span-3">
                         <label className="text-[9px] text-muted uppercase font-bold ml-1">Дата</label>
-                        <input 
-                          type="date" 
-                          value={editDate || ''}
-                          onChange={(e) => setEditDate(e.target.value)}
-                          className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold"
-                        />
+                        <input type="date" value={editDate || ''} onChange={(e) => setEditDate(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
+                      </div>
+                      <div className="col-span-3 border-b border-border pb-1 mt-2">
+                        <span className="text-[9px] text-accent uppercase font-bold">Основные</span>
                       </div>
                       <div>
                         <label className="text-[9px] text-muted uppercase font-bold ml-1">Вес</label>
-                        <input 
-                          type="number" 
-                          value={editWeight || ''}
-                          onChange={(e) => setEditWeight(e.target.value)}
-                          className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold"
-                        />
+                        <input type="number" value={editWeight || ''} onChange={(e) => setEditWeight(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold ml-1">Возраст</label>
+                        <input type="number" value={editAge || ''} onChange={(e) => setEditAge(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold ml-1">ИМТ</label>
+                        <input type="number" value={editBmi || ''} onChange={(e) => setEditBmi(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
+                      </div>
+
+                      <div className="col-span-3 border-b border-border pb-1 mt-2">
+                        <span className="text-[9px] text-accent uppercase font-bold">Биоимпеданс</span>
                       </div>
                       <div>
                         <label className="text-[9px] text-muted uppercase font-bold ml-1">Жир %</label>
-                        <input 
-                          type="number" 
-                          value={editFat || ''}
-                          onChange={(e) => setEditFat(e.target.value)}
-                          className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold"
-                        />
+                        <input type="number" value={editFat || ''} onChange={(e) => setEditFat(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
                       </div>
                       <div>
                         <label className="text-[9px] text-muted uppercase font-bold ml-1">Мышцы %</label>
-                        <input 
-                          type="number" 
-                          value={editMuscle || ''}
-                          onChange={(e) => setEditMuscle(e.target.value)}
-                          className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold"
-                        />
+                        <input type="number" value={editMuscle || ''} onChange={(e) => setEditMuscle(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
                       </div>
                       <div>
                         <label className="text-[9px] text-muted uppercase font-bold ml-1">Вода %</label>
-                        <input 
-                          type="number" 
-                          value={editWater || ''}
-                          onChange={(e) => setEditWater(e.target.value)}
-                          className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold"
-                        />
+                        <input type="number" value={editWater || ''} onChange={(e) => setEditWater(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold ml-1">Висц. жир</label>
+                        <input type="number" value={editVisceralFat || ''} onChange={(e) => setEditVisceralFat(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold ml-1">Кости</label>
+                        <input type="number" value={editBoneMass || ''} onChange={(e) => setEditBoneMass(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold ml-1">Белок %</label>
+                        <input type="number" value={editProtein || ''} onChange={(e) => setEditProtein(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold ml-1">BMR</label>
+                        <input type="number" value={editBmr || ''} onChange={(e) => setEditBmr(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold ml-1">Биол. возр.</label>
+                        <input type="number" value={editBiologicalAge || ''} onChange={(e) => setEditBiologicalAge(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold ml-1">Пульс</label>
+                        <input type="number" value={editHeartRate || ''} onChange={(e) => setEditHeartRate(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
+                      </div>
+
+                      <div className="col-span-3 border-b border-border pb-1 mt-2">
+                        <span className="text-[9px] text-accent uppercase font-bold">Объемы</span>
                       </div>
                       <div>
                         <label className="text-[9px] text-muted uppercase font-bold ml-1">Грудь</label>
-                        <input 
-                          type="number" 
-                          value={editChest || ''}
-                          onChange={(e) => setEditChest(e.target.value)}
-                          className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold"
-                        />
+                        <input type="number" value={editChest || ''} onChange={(e) => setEditChest(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
                       </div>
                       <div>
                         <label className="text-[9px] text-muted uppercase font-bold ml-1">Талия выс</label>
-                        <input 
-                          type="number" 
-                          value={editWaistHigh || ''}
-                          onChange={(e) => setEditWaistHigh(e.target.value)}
-                          className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold"
-                        />
+                        <input type="number" value={editWaistHigh || ''} onChange={(e) => setEditWaistHigh(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
                       </div>
                       <div>
                         <label className="text-[9px] text-muted uppercase font-bold ml-1">Талия пупок</label>
-                        <input 
-                          type="number" 
-                          value={editWaistNavel || ''}
-                          onChange={(e) => setEditWaistNavel(e.target.value)}
-                          className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold"
-                        />
+                        <input type="number" value={editWaistNavel || ''} onChange={(e) => setEditWaistNavel(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
                       </div>
                       <div>
-                        <label className="text-[9px] text-muted uppercase font-bold ml-1">Самое жирное</label>
-                        <input 
-                          type="number" 
-                          value={editWaistWidest || ''}
-                          onChange={(e) => setEditWaistWidest(e.target.value)}
-                          className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold"
-                        />
+                        <label className="text-[9px] text-muted uppercase font-bold ml-1">Талия шир</label>
+                        <input type="number" value={editWaistWidest || ''} onChange={(e) => setEditWaistWidest(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
                       </div>
                       <div>
                         <label className="text-[9px] text-muted uppercase font-bold ml-1">Бёдра</label>
-                        <input 
-                          type="number" 
-                          value={editHips || ''}
-                          onChange={(e) => setEditHips(e.target.value)}
-                          className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold"
-                        />
+                        <input type="number" value={editHips || ''} onChange={(e) => setEditHips(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
                       </div>
                       <div>
                         <label className="text-[9px] text-muted uppercase font-bold ml-1">Бедро</label>
-                        <input 
-                          type="number" 
-                          value={editThigh || ''}
-                          onChange={(e) => setEditThigh(e.target.value)}
-                          className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold"
-                        />
+                        <input type="number" value={editThigh || ''} onChange={(e) => setEditThigh(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
                       </div>
                       <div>
                         <label className="text-[9px] text-muted uppercase font-bold ml-1">Бицепс</label>
-                        <input 
-                          type="number" 
-                          value={editBicep || ''}
-                          onChange={(e) => setEditBicep(e.target.value)}
-                          className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold"
-                        />
+                        <input type="number" value={editBicep || ''} onChange={(e) => setEditBicep(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
                       </div>
                     </div>
                     <div className="flex gap-2">
@@ -3571,8 +3809,17 @@ function WeightPage({
                         {m.thigh && <span>Бедро: {m.thigh}</span>}
                       </div>
                     )}
-                    <div className="text-[10px] text-muted font-bold uppercase opacity-60">
-                      {m.fat ? `${m.fat}% жир` : ''} {m.muscle ? `· ${m.muscle}% мышцы` : ''}
+                    <div className="text-[10px] text-muted font-bold uppercase opacity-60 flex flex-wrap gap-x-2">
+                      {m.fat && <span>Жир: {m.fat}%</span>}
+                      {m.muscle && <span>Мышцы: {m.muscle}%</span>}
+                      {m.water && <span>Вода: {m.water}%</span>}
+                      {m.visceralFat && <span>Висц. жир: {m.visceralFat}</span>}
+                      {m.bmi && <span>ИМТ: {m.bmi}</span>}
+                      {m.boneMass && <span>Кости: {m.boneMass}кг</span>}
+                      {m.protein && <span>Белок: {m.protein}%</span>}
+                      {m.bmr && <span>BMR: {m.bmr}</span>}
+                      {m.biologicalAge && <span>Биол. возр: {m.biologicalAge}</span>}
+                      {m.heartRate && <span>Пульс: {m.heartRate}</span>}
                     </div>
                   </>
                 )}

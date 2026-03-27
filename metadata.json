@@ -1,5 +1,5 @@
 {
   "name": "FitTrack-Pro",
   "description": "Ваш персональный тренер и дневник тренировок с сохранением данных в реальном времени и аналитикой прогресса.",
-  "requestFramePermissions": []
+  "requestFramePermissions": ["microphone"]
 }

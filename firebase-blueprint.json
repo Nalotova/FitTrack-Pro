@@ -39,7 +39,19 @@
       "properties": {
         "displayName": { "type": "string", "description": "The user's display name." },
         "email": { "type": "string", "format": "email", "description": "The user's email address." },
-        "photoURL": { "type": "string", "description": "The user's profile picture URL." }
+        "photoURL": { "type": "string", "description": "The user's profile picture URL." },
+        "reminders": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "day": { "type": "string", "description": "Day of the week." },
+              "time": { "type": "string", "description": "Time of the reminder." },
+              "label": { "type": "string", "description": "Label for the reminder." }
+            },
+            "required": ["day", "time"]
+          }
+        }
       },
       "required": ["displayName", "email"]
     },
@@ -59,7 +71,19 @@
         "waist": { "type": "number", "description": "Waist measurement in cm." },
         "hips": { "type": "number", "description": "Hips measurement in cm." },
         "bicep": { "type": "number", "description": "Bicep measurement in cm." },
-        "thigh": { "type": "number", "description": "Thigh measurement in cm." }
+        "thigh": { "type": "number", "description": "Thigh measurement in cm." },
+        "bmi": { "type": "number" },
+        "visceralFat": { "type": "number" },
+        "skeletalMuscleIndex": { "type": "number" },
+        "waistHipRatio": { "type": "number" },
+        "bodyType": { "type": "string" },
+        "bodyShape": { "type": "string" },
+        "bmr": { "type": "number" },
+        "boneMass": { "type": "number" },
+        "protein": { "type": "number" },
+        "fatFreeMass": { "type": "number" },
+        "biologicalAge": { "type": "number" },
+        "heartRate": { "type": "number" }
       },
       "required": ["userId", "date", "weight"]
     },
