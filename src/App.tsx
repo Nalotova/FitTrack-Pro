@@ -39,7 +39,8 @@ import {
   ImageIcon,
   Camera,
   Settings,
-  RotateCcw
+  RotateCcw,
+  Bell
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
@@ -136,11 +137,17 @@ interface StrengthRecord {
   reps: number;
 }
 
+interface WorkoutReminder {
+  day: string; // "Monday", "Tuesday", etc.
+  time: string; // "HH:mm"
+}
+
 interface UserProfile {
   displayName: string;
   email: string;
   photoURL?: string;
   role: 'user' | 'admin';
+  reminders?: WorkoutReminder[];
 }
 
 // Program Data
@@ -569,6 +576,7 @@ function AppContent() {
   useEffect(() => {
     if (!user) return;
     (window as any).handleUpdateProgramFromCoach = handleUpdateProgram;
+    (window as any).handleUpdateTechFromCoach = handleUpdateTech;
     const unsubProfile = onSnapshot(doc(db, 'users', user.uid), (snapshot) => {
       if (snapshot.exists()) {
         setUserProfile(snapshot.data() as UserProfile);
@@ -1180,6 +1188,7 @@ function AppContent() {
               isLoading={isCoachLoading}
               setIsLoading={setIsCoachLoading}
               programData={programData}
+              techData={techData}
             />
           )}
           {activeTab === 'progress' && (
@@ -1631,7 +1640,8 @@ function CoachPage({
   setMessages,
   isLoading,
   setIsLoading,
-  programData
+  programData,
+  techData
 }: any) {
   const [input, setInput] = useState('');
   const [images, setImages] = useState<string[]>([]);
@@ -1752,6 +1762,7 @@ function CoachPage({
         - ЗАМЕРЫ: ${JSON.stringify(measurements.slice(-10))}
         - СИЛОВЫЕ РЕКОРДЫ: ${JSON.stringify(strengthRecords.slice(-20))}
         - ТЕКУЩАЯ ПРОГРАММА: ${JSON.stringify(programData)}
+        - ТЕХНИКА ВЫПОЛНЕНИЯ: ${JSON.stringify(techData)}
       `;
 
       const userParts: any[] = [];
@@ -1881,6 +1892,28 @@ function CoachPage({
                   },
                   required: ["newData"]
                 }
+              }, {
+                name: "update_tech_data",
+                description: "Обновить данные во вкладке 'Техника'. Принимает полный массив элементов техники.",
+                parameters: {
+                  type: Type.OBJECT,
+                  properties: {
+                    newItems: {
+                      type: Type.ARRAY,
+                      description: "Новый массив элементов техники.",
+                      items: {
+                        type: Type.OBJECT,
+                        properties: {
+                          title: { type: Type.STRING, description: "Заголовок (название упражнения)" },
+                          subtitle: { type: Type.STRING, description: "Подзаголовок (например, группа мышц)" },
+                          content: { type: Type.STRING, description: "Текст техники выполнения (можно использовать переносы строк)" }
+                        },
+                        required: ["title", "subtitle", "content"]
+                      }
+                    }
+                  },
+                  required: ["newItems"]
+                }
               }]
             }]
           }
@@ -1951,6 +1984,38 @@ function CoachPage({
               });
               
               const aiMsg = { role: 'assistant', content: confirmResponse.text || "Программа успешно обновлена! 💪" };
+              setMessages([...newMessages, aiMsg]);
+              setIsLoading(false);
+              return;
+            }
+          } else if (call.name === 'update_tech_data') {
+            const { newItems } = call.args as any;
+            
+            if (typeof (window as any).handleUpdateTechFromCoach === 'function') {
+              await (window as any).handleUpdateTechFromCoach(newItems);
+              
+              const confirmResponse = await ai.models.generateContent({
+                model: modelName,
+                contents: [
+                  ...contents,
+                  response.candidates[0].content,
+                  { 
+                    role: 'user', 
+                    parts: response.functionCalls.map(call => ({ 
+                      functionResponse: { 
+                        name: call.name, 
+                        response: { status: 'success' }, 
+                        id: call.id 
+                      } 
+                    })) 
+                  }
+                ],
+                config: {
+                  systemInstruction: systemPrompt + "\n\nДАННЫЕ ПОЛЬЗОВАТЕЛЯ ДЛЯ АНАЛИЗА:\n" + dataContext,
+                }
+              });
+              
+              const aiMsg = { role: 'assistant', content: confirmResponse.text || "Данные техники успешно обновлены! 📚" };
               setMessages([...newMessages, aiMsg]);
               setIsLoading(false);
               return;
@@ -2222,6 +2287,7 @@ function ProfilePage({
   onImportData: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }) {
   const [name, setName] = useState(profile?.displayName || '');
+  const [reminders, setReminders] = useState<WorkoutReminder[]>(profile?.reminders || []);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const profileFileInputRef = useRef<HTMLInputElement>(null);
@@ -2274,13 +2340,31 @@ function ProfilePage({
   const handleSaveName = async () => {
     setIsSaving(true);
     try {
-      await onUpdate({ displayName: name });
+      await onUpdate({ displayName: name, reminders });
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } finally {
       setIsSaving(false);
     }
   };
+
+  const addReminder = () => {
+    setReminders([...reminders, { day: 'Понедельник', time: '18:00' }]);
+  };
+
+  const updateReminder = (index: number, field: keyof WorkoutReminder, value: string) => {
+    const updated = [...reminders];
+    updated[index] = { ...updated[index], [field]: value };
+    setReminders(updated);
+  };
+
+  const removeReminder = (index: number) => {
+    setReminders(reminders.filter((_, i) => i !== index));
+  };
+
+  const daysOfWeek = [
+    'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'
+  ];
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} className="space-y-8 pb-12">
@@ -2318,6 +2402,53 @@ function ProfilePage({
               placeholder="Как тебя называть?"
               className="w-full py-4 px-6 bg-surface-2/50 border-2 border-border rounded-2xl focus:border-accent outline-none transition-all font-medium"
             />
+          </div>
+
+          <div className="space-y-6 pt-6 border-t border-border">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-accent/10 rounded-lg flex items-center justify-center text-accent">
+                  <Bell size={16} />
+                </div>
+                <h4 className="text-sm font-bold text-text uppercase tracking-wider">Напоминания</h4>
+              </div>
+              <button 
+                onClick={addReminder}
+                className="text-[10px] font-bold text-accent uppercase tracking-widest hover:underline flex items-center gap-1"
+              >
+                <Plus size={14} /> Добавить
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {reminders.length === 0 ? (
+                <p className="text-[10px] text-muted italic ml-4">Напоминания не установлены</p>
+              ) : (
+                reminders.map((reminder, idx) => (
+                  <div key={idx} className="flex gap-2 items-center bg-surface-2/50 p-3 rounded-xl border border-border">
+                    <select 
+                      value={reminder.day}
+                      onChange={(e) => updateReminder(idx, 'day', e.target.value)}
+                      className="flex-1 bg-white border border-border rounded-lg p-2 text-xs font-bold outline-none focus:border-accent"
+                    >
+                      {daysOfWeek.map(day => <option key={day} value={day}>{day}</option>)}
+                    </select>
+                    <input 
+                      type="time" 
+                      value={reminder.time}
+                      onChange={(e) => updateReminder(idx, 'time', e.target.value)}
+                      className="w-24 bg-white border border-border rounded-lg p-2 text-xs font-bold outline-none focus:border-accent"
+                    />
+                    <button 
+                      onClick={() => removeReminder(idx)}
+                      className="p-2 text-muted hover:text-red-500 transition-colors"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
 
           <button 
