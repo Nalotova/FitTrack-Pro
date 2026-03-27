@@ -96,6 +96,19 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["data", "updatedAt"]
+    },
+    "TechItem": {
+      "title": "Tech Item",
+      "description": "A technical tip or instruction for an exercise.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "subtitle": { "type": "string" },
+        "content": { "type": "string", "description": "The multi-line text content of the tech tip." },
+        "order": { "type": "number" }
+      },
+      "required": ["userId", "title", "subtitle", "content", "order"]
     }
   },
   "firestore": {
@@ -122,6 +135,10 @@
     "/programs/{userId}": {
       "schema": "TrainingProgram",
       "description": "User's custom training program."
+    },
+    "/tech/{techId}": {
+      "schema": "TechItem",
+      "description": "Collection of technical tips."
     }
   }
 }

@@ -29,6 +29,7 @@ import {
   BookOpen,
   CheckCircle2,
   ChevronDown,
+  ChevronUp,
   Download,
   Upload,
   AlertTriangle,
@@ -42,7 +43,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { 
   LineChart, 
   Line, 
@@ -72,6 +73,8 @@ import {
   doc, 
   deleteDoc, 
   addDoc,
+  writeBatch,
+  getDocs,
   User,
   OperationType,
   handleFirestoreError
@@ -86,6 +89,14 @@ interface Set {
 interface Exercise {
   name: string;
   sets: Set[];
+}
+
+interface TechItem {
+  id?: string;
+  title: string;
+  subtitle: string;
+  content: string;
+  order: number;
 }
 
 interface Workout {
@@ -395,11 +406,17 @@ function AppContent() {
   const [measurements, setMeasurements] = useState<WeightMeasurement[]>([]);
   const [strengthRecords, setStrengthRecords] = useState<StrengthRecord[]>([]);
   const [activeTab, setActiveTab] = useState<'today' | 'progress' | 'strength' | 'tech' | 'coach' | 'profile'>('today');
-  const [coachMessages, setCoachMessages] = useState<any[]>([]);
+  const [coachMessages, setCoachMessages] = useState<any[]>(() => {
+    const saved = localStorage.getItem('coach_messages');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [isCoachLoading, setIsCoachLoading] = useState(false);
   const [programData, setProgramData] = useState<Record<string, any>>(PROGRAM);
   const [isProgramLoading, setIsProgramLoading] = useState(true);
+  const [techData, setTechData] = useState<TechItem[]>([]);
+  const [isTechLoading, setIsTechLoading] = useState(true);
   const [showProgramEditor, setShowProgramEditor] = useState(false);
+  const [showTechEditor, setShowTechEditor] = useState(false);
   
   // Today's state
   const [currentDay, setCurrentDay] = useState('День 1');
@@ -423,17 +440,20 @@ function AppContent() {
         setCurrentNotes(data.currentNotes || {});
       }
       setIsWorkoutStateLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `current_workout/${user.uid}`);
+      setIsWorkoutStateLoading(false);
     });
     return () => unsub();
   }, [user]);
 
   // Sync currentDay with programData
   useEffect(() => {
-    if (!isProgramLoading && !programData[currentDay]) {
+    if (!isProgramLoading && !isWorkoutStateLoading && !programData[currentDay]) {
       const firstDay = Object.keys(programData)[0];
       if (firstDay) setCurrentDay(firstDay);
     }
-  }, [programData, currentDay, isProgramLoading]);
+  }, [programData, currentDay, isProgramLoading, isWorkoutStateLoading]);
 
   // Persistence for Today's state
   useEffect(() => {
@@ -449,6 +469,11 @@ function AppContent() {
     return () => clearTimeout(timer);
   }, [currentDay, checkedExercises, currentSets, currentNotes, user, isWorkoutStateLoading]);
 
+  // Persistence for Coach messages
+  useEffect(() => {
+    localStorage.setItem('coach_messages', JSON.stringify(coachMessages));
+  }, [coachMessages]);
+
   const saveWorkoutState = async (updates: any) => {
     if (!user) return;
     try {
@@ -458,8 +483,45 @@ function AppContent() {
     }
   };
 
+  const updateProgramTipWithWeight = async (exercise: string, weight: number) => {
+    if (!programData || !exercise || !weight) return;
+    const updatedProgram = JSON.parse(JSON.stringify(programData));
+    let changed = false;
+    Object.keys(updatedProgram).forEach(dayKey => {
+      updatedProgram[dayKey].exercises.forEach((ex: any) => {
+        if (ex.name.toLowerCase() === exercise.toLowerCase()) {
+          const suffix = `${weight}+`;
+          if (!ex.tip) {
+            ex.tip = suffix;
+            changed = true;
+          } else {
+            // Check if it already ends with a weight pattern like " 50+"
+            const weightPattern = /\s\d+(\.\d+)?\+$/;
+            if (weightPattern.test(ex.tip)) {
+              ex.tip = ex.tip.replace(weightPattern, ` ${suffix}`);
+            } else {
+              ex.tip = ex.tip.trim() + ` ${suffix}`;
+            }
+            changed = true;
+          }
+        }
+      });
+    });
+    if (changed) {
+      await handleUpdateProgram(updatedProgram);
+    }
+  };
+
   const handleUpdateProgram = async (newData: any) => {
     if (!user) return;
+    
+    // Validate newData to prevent saving empty or malformed programs
+    if (!newData || typeof newData !== 'object' || Object.keys(newData).length === 0) {
+      console.error("Attempted to save empty or invalid program data:", newData);
+      // If it's empty, we might want to fallback to PROGRAM instead of saving empty
+      newData = PROGRAM;
+    }
+
     try {
       // Save data and explicit order of keys to preserve user's preferred order
       await setDoc(doc(db, 'programs', user.uid), { 
@@ -472,7 +534,7 @@ function AppContent() {
       const days = Object.keys(newData);
       let updatedDay = currentDay;
       if (!days.includes(currentDay)) {
-        updatedDay = days[0];
+        updatedDay = days[0] || 'День 1';
       }
       
       // Save updated state
@@ -512,6 +574,9 @@ function AppContent() {
         setUserProfile(snapshot.data() as UserProfile);
       }
       setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
+      setLoading(false);
     });
     return () => unsubProfile();
   }, [user]);
@@ -532,10 +597,15 @@ function AppContent() {
         const order = snapshotData.order;
 
         // Check if the program is "broken" (empty exercises or English keys)
-        const hasEnglishKeys = data && Object.keys(data).some(k => k.toLowerCase().includes('day_') || k.toLowerCase().includes('cardio_'));
-        const hasEmptyExercises = data && Object.values(data).some((d: any) => !d.exercises || d.exercises.length === 0);
+        // We only fallback if the data is completely missing or clearly invalid (e.g. all days empty)
+        const hasEnglishKeys = data && Object.keys(data).some(k => 
+          k.toLowerCase().includes('day') || 
+          k.toLowerCase().includes('cardio') || 
+          k.toLowerCase().includes('workout')
+        );
+        const allEmptyExercises = data && Object.keys(data).length > 0 && Object.values(data).every((d: any) => !d.exercises || d.exercises.length === 0);
         
-        if (data && Object.keys(data).length > 0 && !hasEnglishKeys && !hasEmptyExercises) {
+        if (data && Object.keys(data).length > 0 && !hasEnglishKeys && !allEmptyExercises) {
           // Restore order if it was explicitly saved
           if (order && Array.isArray(order)) {
             const orderedData: any = {};
@@ -554,8 +624,36 @@ function AppContent() {
       }
       setProgramData(finalData);
       setIsProgramLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `programs/${user.uid}`);
+      setIsProgramLoading(false);
     });
-    return () => unsubProgram();
+
+    const unsubTech = onSnapshot(
+      query(collection(db, 'tech'), where('userId', '==', user.uid)),
+      (snapshot) => {
+        const data = snapshot.docs.map(doc => {
+          const d = doc.data();
+          // Migration: if points exists but content doesn't, join them
+          let content = d.content || '';
+          if (!content && d.points && Array.isArray(d.points)) {
+            content = d.points.map((p: string) => `● ${p}`).join('\n');
+          }
+          return { id: doc.id, ...d, content } as TechItem;
+        });
+        setTechData(data.sort((a, b) => a.order - b.order));
+        setIsTechLoading(false);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'tech');
+        setIsTechLoading(false);
+      }
+    );
+
+    return () => {
+      unsubProgram();
+      unsubTech();
+    };
   }, [user]);
 
   // Data Listeners
@@ -698,6 +796,28 @@ function AppContent() {
     }
   };
 
+  const handleUpdateTech = async (items: TechItem[]) => {
+    if (!user) return;
+    try {
+      const batch = writeBatch(db);
+      
+      // Get existing docs to delete
+      const existingDocs = await getDocs(query(collection(db, 'tech'), where('userId', '==', user.uid)));
+      existingDocs.forEach(doc => batch.delete(doc.ref));
+
+      // Add new items
+      items.forEach((item, index) => {
+        const newDocRef = doc(collection(db, 'tech'));
+        const { id, ...itemData } = item;
+        batch.set(newDocRef, { ...itemData, userId: user.uid, order: index });
+      });
+
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'tech');
+    }
+  };
+
   // Weight Logic
   const handleSaveWeight = async (data: Partial<WeightMeasurement>) => {
     if (!user) return;
@@ -749,6 +869,11 @@ function AppContent() {
         date: new Date().toISOString(),
         ...cleanData
       });
+      
+      // Update program tip if exercise matches
+      if (data.exercise && data.weight) {
+        await updateProgramTipWithWeight(data.exercise, data.weight);
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'strength');
     }
@@ -780,6 +905,16 @@ function AppContent() {
         Object.entries(data).filter(([_, v]) => v !== undefined)
       );
       await setDoc(doc(db, 'strength', id), cleanData, { merge: true });
+      
+      // Update program tip if weight or exercise changed
+      const record = strengthRecords.find(r => r.id === id);
+      if (record) {
+        const exercise = data.exercise || record.exercise;
+        const weight = data.weight || record.weight;
+        if (exercise && weight) {
+          await updateProgramTipWithWeight(exercise, weight);
+        }
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `strength/${id}`);
     }
@@ -995,7 +1130,7 @@ function AppContent() {
         
         <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
           <NavTab active={activeTab === 'today'} onClick={() => setActiveTab('today')} label="Сегодня" />
-          <NavTab active={activeTab === 'coach'} onClick={() => setActiveTab('coach')} label="ИИ Тренер" />
+          <NavTab active={activeTab === 'coach'} onClick={() => setActiveTab('coach')} label="FitTrack-Pro" />
           <NavTab active={activeTab === 'progress'} onClick={() => setActiveTab('progress')} label="История" />
           <NavTab active={activeTab === 'strength'} onClick={() => setActiveTab('strength')} label="Веса" />
           <NavTab active={activeTab === 'tech'} onClick={() => setActiveTab('tech')} label="Техника" />
@@ -1019,15 +1154,20 @@ function AppContent() {
               workouts={workouts}
               programData={programData}
               onEditProgram={() => setShowProgramEditor(true)}
-              onReset={() => {
-                if(confirm('Сбросить текущий прогресс тренировки?')) {
-                  setCurrentDay(Object.keys(programData)[0]);
-                  setCheckedExercises([]);
-                  setCurrentSets({});
-                  setCurrentNotes({});
+              onReset={async () => {
+                if (Object.keys(programData).length === 0) {
+                  if(confirm('Программа пуста. Восстановить стандартную программу?')) {
+                    await handleUpdateProgram(PROGRAM);
+                  }
+                } else {
+                  if(confirm('Сбросить текущий прогресс тренировки?')) {
+                    setCheckedExercises([]);
+                    setCurrentSets({});
+                    setCurrentNotes({});
+                  }
                 }
               }}
-              isLoading={isWorkoutStateLoading}
+              isLoading={isWorkoutStateLoading || isProgramLoading}
             />
           )}
           {activeTab === 'coach' && (
@@ -1060,7 +1200,11 @@ function AppContent() {
             />
           )}
           {activeTab === 'tech' && (
-            <TechPage />
+            <TechPage 
+              items={techData} 
+              onEdit={() => setShowTechEditor(true)} 
+              isLoading={isTechLoading}
+            />
           )}
           {activeTab === 'profile' && (
             <ProfilePage 
@@ -1083,6 +1227,13 @@ function AppContent() {
               program={programData} 
               onSave={handleUpdateProgram} 
               onClose={() => setShowProgramEditor(false)} 
+            />
+          )}
+          {showTechEditor && (
+            <TechEditor 
+              items={techData} 
+              onSave={handleUpdateTech} 
+              onClose={() => setShowTechEditor(false)} 
             />
           )}
         </AnimatePresence>
@@ -1122,11 +1273,14 @@ function ProgramEditor({ program, onSave, onClose }: { program: any; onSave: (da
   };
 
   const addExercise = (day: string) => {
+    const isCardio = localProgram[day]?.isCardio;
     const newExercise = {
-      name: 'Новое упражнение',
-      scheme: '3 x 12',
-      sets: 3,
-      tip: ''
+      name: isCardio ? 'Бег / Ходьба' : 'Новое упражнение',
+      scheme: isCardio ? '30 мин' : '3 x 12',
+      sets: isCardio ? 1 : 3,
+      tip: '',
+      isCardio: isCardio,
+      fields: isCardio ? ["мин", "км", "пульс"] : undefined
     };
     setLocalProgram((prev: any) => ({
       ...prev,
@@ -1160,10 +1314,25 @@ function ProgramEditor({ program, onSave, onClose }: { program: any; onSave: (da
   };
 
   const updateDay = (day: string, field: string, value: any) => {
-    setLocalProgram((prev: any) => ({
-      ...prev,
-      [day]: { ...prev[day], [field]: value }
-    }));
+    setLocalProgram((prev: any) => {
+      const newDay = { ...prev[day], [field]: value };
+      
+      // If toggling isCardio, update all exercises in this day
+      if (field === 'isCardio') {
+        newDay.exercises = newDay.exercises.map((ex: any) => ({
+          ...ex,
+          isCardio: value,
+          fields: value ? (ex.fields || ["мин", "км", "пульс"]) : undefined,
+          sets: value ? (ex.sets === 3 ? 1 : ex.sets) : (ex.sets === 1 ? 3 : ex.sets),
+          scheme: value ? (ex.scheme === '3 x 12' ? '30 мин' : ex.scheme) : (ex.scheme === '30 мин' ? '3 x 12' : ex.scheme)
+        }));
+      }
+      
+      return {
+        ...prev,
+        [day]: newDay
+      };
+    });
   };
 
   const renameDay = (oldName: string, newName: string) => {
@@ -1247,17 +1416,6 @@ function ProgramEditor({ program, onSave, onClose }: { program: any; onSave: (da
             <p className="text-[10px] text-muted uppercase font-bold tracking-widest mt-1">Настрой тренировки под себя</p>
           </div>
           <div className="flex items-center gap-4">
-            <button 
-              onClick={() => {
-                if (window.confirm('Восстановить программу по умолчанию? Все текущие изменения будут потеряны.')) {
-                  setLocalProgram(JSON.parse(JSON.stringify(PROGRAM)));
-                  setSelectedDay(Object.keys(PROGRAM)[0]);
-                }
-              }}
-              className="text-[10px] font-bold text-accent uppercase tracking-widest hover:underline"
-            >
-              Сбросить
-            </button>
             <button onClick={onClose} className="p-2 text-muted hover:text-accent transition-colors">
               <X size={24} />
             </button>
@@ -1374,7 +1532,7 @@ function ProgramEditor({ program, onSave, onClose }: { program: any; onSave: (da
                 <div key={idx} className="bg-white p-4 rounded-2xl border border-border shadow-sm space-y-3 relative group">
                   <button 
                     onClick={() => removeExercise(selectedDay, idx)}
-                    className="absolute top-2 right-2 p-1 text-muted hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                    className="absolute top-2 right-2 p-1 text-muted hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
                   >
                     <Trash2 size={14} />
                   </button>
@@ -1390,7 +1548,9 @@ function ProgramEditor({ program, onSave, onClose }: { program: any; onSave: (da
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[9px] text-muted uppercase font-bold ml-1">Схема (напр. 3 x 12)</label>
+                      <label className="text-[9px] text-muted uppercase font-bold ml-1">
+                        {localProgram[selectedDay]?.isCardio ? 'Цель (напр. 30 мин)' : 'Схема (напр. 3 x 12)'}
+                      </label>
                       <input 
                         type="text" 
                         value={ex.scheme || ''}
@@ -1402,7 +1562,9 @@ function ProgramEditor({ program, onSave, onClose }: { program: any; onSave: (da
 
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <label className="text-[9px] text-muted uppercase font-bold ml-1">Кол-во сетов</label>
+                      <label className="text-[9px] text-muted uppercase font-bold ml-1">
+                        {localProgram[selectedDay]?.isCardio ? 'Кол-во интервалов' : 'Кол-во сетов'}
+                      </label>
                       <input 
                         type="number" 
                         value={ex.sets || 0}
@@ -1411,13 +1573,25 @@ function ProgramEditor({ program, onSave, onClose }: { program: any; onSave: (da
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[9px] text-muted uppercase font-bold ml-1">Подсказка (необязательно)</label>
-                      <input 
-                        type="text" 
-                        value={ex.tip || ''}
-                        onChange={(e) => updateExercise(selectedDay, idx, 'tip', e.target.value)}
-                        className="w-full py-2 px-3 bg-surface-2/30 border border-border rounded-lg text-xs font-bold focus:border-accent outline-none"
-                      />
+                      <label className="text-[9px] text-muted uppercase font-bold ml-1">
+                        {localProgram[selectedDay]?.isCardio ? 'Поля (через запятую)' : 'Подсказка (необязательно)'}
+                      </label>
+                      {localProgram[selectedDay]?.isCardio ? (
+                        <input 
+                          type="text" 
+                          value={ex.fields?.join(', ') || 'мин, км, пульс'}
+                          onChange={(e) => updateExercise(selectedDay, idx, 'fields', e.target.value.split(',').map(s => s.trim()).filter(s => s))}
+                          placeholder="мин, км, пульс"
+                          className="w-full py-2 px-3 bg-surface-2/30 border border-border rounded-lg text-xs font-bold focus:border-accent outline-none"
+                        />
+                      ) : (
+                        <input 
+                          type="text" 
+                          value={ex.tip || ''}
+                          onChange={(e) => updateExercise(selectedDay, idx, 'tip', e.target.value)}
+                          className="w-full py-2 px-3 bg-surface-2/30 border border-border rounded-lg text-xs font-bold focus:border-accent outline-none"
+                        />
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1534,6 +1708,14 @@ function CoachPage({
     }
   };
 
+  const handleClearChat = () => {
+    setMessages([]);
+    localStorage.removeItem('coach_messages');
+    setInput('');
+    setImages([]);
+    setShowClearConfirm(false);
+  };
+
   const handleSend = async (customInput?: string) => {
     const textToSend = customInput || input;
     if ((!textToSend.trim() && images.length === 0) || isLoading) return;
@@ -1552,93 +1734,220 @@ function CoachPage({
         manualApiKey ||
         (import.meta as any).env?.VITE_GEMINI_API_KEY || 
         (process.env as any).GEMINI_API_KEY || 
-        (window as any).GEMINI_API_KEY ||
-        (import.meta as any).env?.VITE_GEMINI_API_KEY_2 || 
-        (process.env as any).GEMINI_API_KEY_2;
+        (process.env as any).API_KEY ||
+        (window as any).GEMINI_API_KEY;
       
       if (!currentApiKey || currentApiKey === "undefined" || currentApiKey === "") {
-        throw new Error("API ключ не найден. Пожалуйста, проверьте настройки.");
+        throw new Error("API ключ не найден. Пожалуйста, проверьте настройки в меню чата (иконка шестеренки). 🧘‍♀️");
       }
       
       const ai = new GoogleGenAI({ apiKey: currentApiKey });
+      const modelName = "gemini-3-flash-preview";
       
-      const parts: any[] = [
-        { text: `Ты — экспертный ИИ-фитнес-тренер. Твоя задача — проводить объективный и конструктивный анализ данных пользователя.
-        
-        ПРАВИЛА ОТВЕТА:
-        1. ЧИТАБЕЛЬНОСТЬ: Обязательно используй ПУСТЫЕ СТРОКИ между разделами.
-        2. СТРУКТУРА: Используй заголовки ###.
-        3. ЛАКОНИЧНОСТЬ: Минимум вводных слов.
-        
-        ИНСТРУМЕНТЫ:
-        - Ты можешь изменять программу тренировок пользователя с помощью функции update_training_program.
-        - Если пользователь просит добавить упражнение, изменить веса или схему — используй этот инструмент.
-        - При изменении программы ВСЕГДА сохраняй структуру JSON: { "День 1": { "subtitle": "...", "exercises": [...] }, ... }
-        
-        ПЕРЕМЕННЫЕ ПОЛЬЗОВАТЕЛЯ:
-        - ТРЕНИРОВКИ: ${JSON.stringify(workouts.slice(-5))}
-        - ЗАМЕРЫ: ${JSON.stringify(measurements.slice(-5))}
-        - СИЛОВЫЕ РЕКОРДЫ: ${JSON.stringify(strengthRecords)}
-        - ТЕКУЩАЯ ПРОГРАММА: ${JSON.stringify(programData)}
-        
-        История чата:
-        ${messages.slice(-10).map((m: any) => `${m.role === 'user' ? 'Пользователь' : 'Тренер'}: ${m.content}`).join('\n')}
-        
-        Новое сообщение пользователя: ${textToSend}` }
-      ];
+      const systemPrompt = `Ты — профессиональный ИИ-фитнес-тренер. Твой стиль: объективный, конструктивный, лаконичный. Ты анализируешь данные тренировок, замеров и силовых рекордов. Твоя цель — помочь пользователю достичь спортивных результатов безопасно и эффективно. Все данные о теле (замеры, вес) предоставлены исключительно в фитнес-целях.`;
 
+      const dataContext = `
+        ПЕРЕМЕННЫЕ ПОЛЬЗОВАТЕЛЯ (ДЛЯ АНАЛИЗА):
+        - ТРЕНИРОВКИ: ${JSON.stringify(workouts.slice(-10))}
+        - ЗАМЕРЫ: ${JSON.stringify(measurements.slice(-10))}
+        - СИЛОВЫЕ РЕКОРДЫ: ${JSON.stringify(strengthRecords.slice(-20))}
+        - ТЕКУЩАЯ ПРОГРАММА: ${JSON.stringify(programData)}
+      `;
+
+      const userParts: any[] = [];
+      if (textToSend.trim()) {
+        userParts.push({ text: textToSend });
+      }
+      
       if (images.length > 0) {
         images.forEach(img => {
-          parts.push({
-            inlineData: {
-              data: img.split(',')[1],
-              mimeType: "image/jpeg"
-            }
-          });
+          const parts = img.split(',');
+          if (parts.length > 1) {
+            const mimeType = img.split(';')[0].split(':')[1] || "image/jpeg";
+            userParts.push({
+              inlineData: {
+                data: parts[1],
+                mimeType: mimeType
+              }
+            });
+          }
         });
       }
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: [{ role: 'user', parts }],
-        config: {
-          systemInstruction: "Ты — профессиональный ИИ-фитнес-тренер. Твой стиль: объективный, конструктивный, лаконичный. Ты можешь менять программу тренировок пользователя, если он об этом просит или если ты видишь необходимость в адаптации на основе его прогресса.",
-          tools: [{
-            functionDeclarations: [{
-              name: "update_training_program",
-              description: "Обновить программу тренировок пользователя. Принимает полный объект программы.",
-              parameters: {
-                type: Type.OBJECT,
-                properties: {
-                  newData: {
-                    type: Type.OBJECT,
-                    description: "Новый объект программы тренировок. Ключи - названия дней, значения - объекты с subtitle и списком exercises."
-                  }
-                },
-                required: ["newData"]
+      if (userParts.length === 0) return;
+
+      const buildHistory = (msgs: any[]) => {
+        const contents: any[] = [];
+        const history = msgs.slice(-10);
+        let lastRole = '';
+        
+        history.forEach((m: any) => {
+          const role = m.role === 'user' ? 'user' : 'model';
+          if (role === lastRole) return;
+          
+          const parts: any[] = [];
+          if (m.content && m.content.trim()) {
+            parts.push({ text: m.content });
+          }
+          
+          if (m.images && m.images.length > 0) {
+            m.images.forEach((img: string) => {
+              const imgParts = img.split(',');
+              if (imgParts.length > 1) {
+                const mimeType = img.split(';')[0].split(':')[1] || "image/jpeg";
+                parts.push({ inlineData: { data: imgParts[1], mimeType: mimeType } });
               }
-            }]
-          }]
+            });
+          }
+          
+          if (parts.length > 0) {
+            contents.push({ role, parts });
+            lastRole = role;
+          }
+        });
+
+        if (contents.length > 0 && contents[contents.length - 1].role === 'user') {
+          contents.pop();
         }
-      });
+        
+        while (contents.length > 0 && contents[0].role !== 'user') {
+          contents.shift();
+        }
+        return contents;
+      };
+
+      const contents = [...buildHistory(messages), { role: 'user', parts: userParts }];
+
+      let response;
+      try {
+        response = await ai.models.generateContent({
+          model: modelName,
+          contents: contents,
+          config: {
+            systemInstruction: systemPrompt + "\n\nДАННЫЕ ПОЛЬЗОВАТЕЛЯ ДЛЯ АНАЛИЗА:\n" + dataContext,
+            safetySettings: [
+              { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+              { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+              { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+              { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE }
+            ],
+            tools: [{
+              functionDeclarations: [{
+                name: "update_training_program",
+                description: "Обновить программу тренировок пользователя. Принимает полный объект программы.",
+                parameters: {
+                  type: Type.OBJECT,
+                  properties: {
+                    newData: {
+                      type: Type.OBJECT,
+                      description: "Новый объект программы тренировок.",
+                      properties: {
+                        days: {
+                          type: Type.ARRAY,
+                          description: "Список тренировочных дней",
+                          items: {
+                            type: Type.OBJECT,
+                            properties: {
+                              name: { type: Type.STRING, description: "Название дня (например, День 1)" },
+                              subtitle: { type: Type.STRING, description: "Подзаголовок (например, Ноги)" },
+                              isCardio: { type: Type.BOOLEAN, description: "Является ли тренировка кардио" },
+                              exercises: {
+                                type: Type.ARRAY,
+                                description: "Список упражнений",
+                                items: {
+                                  type: Type.OBJECT,
+                                  properties: {
+                                    name: { type: Type.STRING, description: "Название упражнения" },
+                                    scheme: { type: Type.STRING, description: "Схема выполнения (например, 3 x 12 или 30 мин)" },
+                                    sets: { type: Type.NUMBER, description: "Количество подходов или интервалов" },
+                                    tip: { type: Type.STRING, description: "Подсказка или техника выполнения" },
+                                    isCardio: { type: Type.BOOLEAN, description: "Является ли упражнение кардио" },
+                                    fields: { 
+                                      type: Type.ARRAY, 
+                                      items: { type: Type.STRING },
+                                      description: "Поля для ввода данных (например, ['мин', 'км', 'пульс'])"
+                                    }
+                                  },
+                                  required: ["name", "scheme", "sets"]
+                                }
+                              }
+                            },
+                            required: ["name", "subtitle", "exercises"]
+                          }
+                        }
+                      },
+                      required: ["days"]
+                    }
+                  },
+                  required: ["newData"]
+                }
+              }]
+            }]
+          }
+        });
+      } catch (safetyErr: any) {
+        const errStr = safetyErr?.message?.toLowerCase() || "";
+        if (errStr.includes("safety") || errStr.includes("blocked") || errStr.includes("candidate")) {
+          console.warn("Safety block triggered, retrying with minimal context...");
+          response = await ai.models.generateContent({
+            model: modelName,
+            contents: [{ 
+              role: 'user', 
+              parts: [{ text: `Пользователь спрашивает: "${textToSend}". Ответь на вопрос пользователя максимально полезно, используя свои знания о фитнесе.` }] 
+            }],
+            config: {
+              safetySettings: [
+                { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+                { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE }
+              ]
+            }
+          });
+        } else {
+          throw safetyErr;
+        }
+      }
 
       if (response.functionCalls) {
         for (const call of response.functionCalls) {
           if (call.name === 'update_training_program') {
             const { newData } = call.args as any;
-            // We need to call the parent's update function
-            // Since CoachPage is a subcomponent, we should pass the update function to it
+            
+            let formattedData = newData;
+            if (newData.days && Array.isArray(newData.days)) {
+              formattedData = {};
+              newData.days.forEach((day: any) => {
+                formattedData[day.name] = {
+                  subtitle: day.subtitle,
+                  isCardio: day.isCardio,
+                  exercises: day.exercises
+                };
+              });
+            }
+
             if (typeof (window as any).handleUpdateProgramFromCoach === 'function') {
-              await (window as any).handleUpdateProgramFromCoach(newData);
+              await (window as any).handleUpdateProgramFromCoach(formattedData);
               
-              // Send a follow-up message to confirm
               const confirmResponse = await ai.models.generateContent({
-                model: "gemini-3-flash-preview",
+                model: modelName,
                 contents: [
-                  { role: 'user', parts },
-                  { role: 'model', parts: [{ functionCall: call }] },
-                  { role: 'user', parts: [{ functionResponse: { name: call.name, response: { status: 'success' }, id: call.id } }] }
-                ]
+                  ...contents,
+                  response.candidates[0].content,
+                  { 
+                    role: 'user', 
+                    parts: response.functionCalls.map(call => ({ 
+                      functionResponse: { 
+                        name: call.name, 
+                        response: { status: 'success' }, 
+                        id: call.id 
+                      } 
+                    })) 
+                  }
+                ],
+                config: {
+                  systemInstruction: systemPrompt + "\n\nДАННЫЕ ПОЛЬЗОВАТЕЛЯ ДЛЯ АНАЛИЗА:\n" + dataContext,
+                }
               });
               
               const aiMsg = { role: 'assistant', content: confirmResponse.text || "Программа успешно обновлена! 💪" };
@@ -1654,9 +1963,20 @@ function CoachPage({
       setMessages([...newMessages, aiMsg]);
     } catch (error: any) {
       console.error("Coach error details:", error);
-      const errorMessage = error?.message?.includes("API key") 
-        ? "Ошибка: API ключ не найден. Пожалуйста, проверьте настройки. 🧘‍♀️"
-        : "Извини, произошла ошибка при связи с ИИ. Попробуй еще раз позже или проверь интернет-соединение. 🧘‍♀️";
+      
+      let errorMessage = "Извини, произошла ошибка при связи с ИИ. Попробуй еще раз позже или проверь интернет-соединение. 🧘‍♀️";
+      
+      if (error?.message?.includes("API key")) {
+        errorMessage = "Ошибка: API ключ не найден или недействителен. Пожалуйста, проверьте настройки. 🧘‍♀️";
+      } else if (error?.message?.toLowerCase().includes("safety") || error?.message?.toLowerCase().includes("blocked")) {
+        errorMessage = "Извини, запрос был заблокирован фильтрами безопасности. Попробуй перефразировать вопрос. 🧘‍♀️";
+      } else if (error?.message?.includes("quota") || error?.message?.includes("429")) {
+        errorMessage = "Превышен лимит запросов к ИИ. Пожалуйста, подождите немного и попробуйте снова. 🧘‍♀️";
+      } else if (error?.message?.includes("500") || error?.message?.includes("503")) {
+        errorMessage = "Сервер ИИ временно недоступен. Попробуйте еще раз через минуту. 🧘‍♀️";
+      } else {
+        errorMessage = `Ошибка связи: ${error?.message || "Неизвестная ошибка"}. Попробуйте очистить чат (корзина) и повторить. 🧘‍♀️`;
+      }
       
       setMessages([...newMessages, { role: 'assistant', content: errorMessage }]);
     } finally {
@@ -1674,10 +1994,10 @@ function CoachPage({
       <div className="bg-white p-6 rounded-[32px] border border-border shadow-sm mb-4 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 bg-accent/10 rounded-2xl flex items-center justify-center text-accent">
-            <Bot size={28} />
+            <Dumbbell size={28} />
           </div>
           <div>
-            <h2 className="text-lg font-display font-bold text-accent">Твой ИИ Тренер</h2>
+            <h2 className="text-lg font-display font-bold text-accent">FitTrack-Pro ИИ</h2>
             <p className="text-[10px] text-muted uppercase font-bold tracking-widest">Персональные советы и мотивация</p>
           </div>
         </div>
@@ -1689,6 +2009,24 @@ function CoachPage({
             <TrendingUp size={14} />
             Анализ
           </button>
+          <div className="relative">
+            <button 
+              onClick={() => setShowClearConfirm(true)}
+              className="p-2 bg-red-50 text-red-500 border border-red-100 rounded-xl hover:bg-red-100 transition-all"
+              title="Очистить чат"
+            >
+              <Trash2 size={16} />
+            </button>
+            {showClearConfirm && (
+              <div className="absolute right-0 top-full mt-2 w-48 bg-white border border-border rounded-xl shadow-xl p-3 z-50">
+                <p className="text-[10px] font-bold mb-2">Очистить историю чата?</p>
+                <div className="flex gap-2">
+                  <button onClick={handleClearChat} className="flex-1 py-1 bg-red-500 text-white text-[10px] rounded-lg">Да</button>
+                  <button onClick={() => setShowClearConfirm(false)} className="flex-1 py-1 bg-surface-2 text-muted text-[10px] rounded-lg">Нет</button>
+                </div>
+              </div>
+            )}
+          </div>
           <div className="relative">
             <button 
               onClick={() => setShowApiKeySettings(!showApiKeySettings)}
@@ -1738,37 +2076,6 @@ function CoachPage({
               </div>
             )}
           </div>
-          <div className="relative">
-            <button 
-              onClick={() => setShowClearConfirm(!showClearConfirm)}
-              className="p-2 bg-red-50 hover:bg-red-100 text-red-500 rounded-xl border border-red-100 transition-all"
-              title="Очистить чат"
-            >
-              <Trash2 size={16} />
-            </button>
-            {showClearConfirm && (
-              <div className="absolute right-0 top-full mt-2 w-48 bg-white border border-border rounded-2xl shadow-xl p-4 z-50 animate-in fade-in slide-in-from-top-2">
-                <p className="text-xs font-bold text-text mb-3">Очистить историю?</p>
-                <div className="flex gap-2">
-                  <button 
-                    onClick={() => {
-                      setMessages([]);
-                      setShowClearConfirm(false);
-                    }}
-                    className="flex-1 py-2 bg-red-500 text-white text-[10px] font-bold uppercase rounded-lg"
-                  >
-                    Да
-                  </button>
-                  <button 
-                    onClick={() => setShowClearConfirm(false)}
-                    className="flex-1 py-2 bg-surface-2 text-text text-[10px] font-bold uppercase rounded-lg"
-                  >
-                    Нет
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
         </div>
       </div>
 
@@ -1787,38 +2094,49 @@ function CoachPage({
             <p className="text-sm font-medium">Привет! Я твой ИИ тренер. <br/> Спроси меня о прогрессе, технике или пришли фото формы! ✨</p>
           </div>
         )}
-        {messages.map((m: any, i: number) => (
-          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[85%] p-4 rounded-3xl text-sm leading-relaxed shadow-sm ${
-              m.role === 'user' 
-                ? 'bg-accent text-white rounded-tr-none' 
-                : 'bg-white border border-border text-text rounded-tl-none'
-            }`}>
-              {m.images && m.images.length > 0 && (
-                <div className="grid grid-cols-2 gap-2 mb-3">
-                  {m.images.map((img: string, imgIdx: number) => (
-                    <img key={imgIdx} src={img} alt="Uploaded" className="w-full h-32 object-cover rounded-2xl border border-white/20" />
-                  ))}
-                </div>
-              )}
-              {m.role === 'assistant' ? (
-                <div className="markdown-body">
-                  <ReactMarkdown>{m.content}</ReactMarkdown>
-                </div>
-              ) : (
-                m.content
-              )}
-            </div>
-          </div>
-        ))}
+        <AnimatePresence initial={false}>
+          {messages.map((m: any, i: number) => (
+            <motion.div 
+              key={i} 
+              initial={{ opacity: 0, y: 10, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            >
+              <div className={`max-w-[85%] p-4 rounded-3xl text-sm leading-relaxed shadow-sm ${
+                m.role === 'user' 
+                  ? 'bg-accent text-white rounded-tr-none' 
+                  : 'bg-white border border-border text-text rounded-tl-none'
+              }`}>
+                {m.images && m.images.length > 0 && (
+                  <div className="grid grid-cols-2 gap-2 mb-3">
+                    {m.images.map((img: string, imgIdx: number) => (
+                      <img key={imgIdx} src={img} alt="Uploaded" className="w-full h-32 object-cover rounded-2xl border border-white/20" />
+                    ))}
+                  </div>
+                )}
+                {m.role === 'assistant' ? (
+                  <div className="markdown-body">
+                    <ReactMarkdown>{m.content}</ReactMarkdown>
+                  </div>
+                ) : (
+                  m.content
+                )}
+              </div>
+            </motion.div>
+          ))}
+        </AnimatePresence>
         {isLoading && (
-          <div className="flex justify-start">
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex justify-start"
+          >
             <div className="bg-white border border-border p-4 rounded-3xl rounded-tl-none flex gap-1">
               <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 1 }} className="w-1.5 h-1.5 bg-accent rounded-full" />
               <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 1, delay: 0.2 }} className="w-1.5 h-1.5 bg-accent rounded-full" />
               <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 1, delay: 0.4 }} className="w-1.5 h-1.5 bg-accent rounded-full" />
             </div>
-          </div>
+          </motion.div>
         )}
       </div>
 
@@ -2111,6 +2429,22 @@ function TodayPage({
   }
 
   const program = programData[currentDay];
+  
+  if (Object.keys(programData).length === 0) {
+    return (
+      <div className="text-center py-20 bg-white rounded-[40px] border border-border shadow-sm">
+        <AlertTriangle className="mx-auto mb-4 text-accent" size={48} />
+        <p className="text-sm font-bold text-text mb-4">Программа пуста</p>
+        <button 
+          onClick={() => onReset()} 
+          className="px-6 py-3 bg-accent text-white rounded-2xl text-xs font-bold uppercase tracking-widest"
+        >
+          Восстановить по умолчанию
+        </button>
+      </div>
+    );
+  }
+
   if (!program) {
     return (
       <div className="text-center py-20 bg-white rounded-[40px] border border-border shadow-sm">
@@ -2180,40 +2514,48 @@ function TodayPage({
       )}
 
       <div className="space-y-4">
-        {program.exercises.map((ex: any, idx: number) => (
-          <ExerciseCard 
-            key={idx}
-            exercise={ex}
-            index={idx}
-            isCardioDay={program.isCardio}
-            isChecked={checkedExercises.includes(idx)}
-            onCheck={() => {
-              setCheckedExercises((prev: number[]) => 
-                prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]
-              );
-            }}
-            sets={currentSets[idx] || []}
-            onUpdateSet={(sIdx: number, field: number, val: string) => {
-              setCurrentSets((prev: any) => {
-                const updated = { ...prev };
-                const isCardio = ex.isCardio || program.isCardio;
-                const fieldCount = isCardio ? (ex.fields?.length || 3) : 2;
-                
-                if (!updated[idx]) {
-                  updated[idx] = Array(ex.sets).fill(null).map(() => Array(fieldCount).fill(''));
-                }
-                
-                updated[idx] = updated[idx].map((set: any[], i: number) => 
-                  i === sIdx ? set.map((v, f) => f === field ? val : v) : set
-                );
-                
-                return updated;
-              });
-            }}
-            note={currentNotes[idx] || ''}
-            onUpdateNote={(val: string) => setCurrentNotes((prev: any) => ({ ...prev, [idx]: val }))}
-          />
-        ))}
+        <AnimatePresence initial={false}>
+          {program.exercises.map((ex: any, idx: number) => (
+            <motion.div
+              key={idx}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: idx * 0.05 }}
+            >
+              <ExerciseCard 
+                exercise={ex}
+                index={idx}
+                isCardioDay={program.isCardio}
+                isChecked={checkedExercises.includes(idx)}
+                onCheck={() => {
+                  setCheckedExercises((prev: number[]) => 
+                    prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]
+                  );
+                }}
+                sets={currentSets[idx] || []}
+                onUpdateSet={(sIdx: number, field: number, val: string) => {
+                  setCurrentSets((prev: any) => {
+                    const updated = { ...prev };
+                    const isCardio = ex.isCardio || program.isCardio;
+                    const fieldCount = isCardio ? (ex.fields?.length || 3) : 2;
+                    
+                    if (!updated[idx]) {
+                      updated[idx] = Array(ex.sets).fill(null).map(() => Array(fieldCount).fill(''));
+                    }
+                    
+                    updated[idx] = updated[idx].map((set: any[], i: number) => 
+                      i === sIdx ? set.map((v, f) => f === field ? val : v) : set
+                    );
+                    
+                    return updated;
+                  });
+                }}
+                note={currentNotes[idx] || ''}
+                onUpdateNote={(val: string) => setCurrentNotes((prev: any) => ({ ...prev, [idx]: val }))}
+              />
+            </motion.div>
+          ))}
+        </AnimatePresence>
       </div>
 
       {done === total && !isCompletedToday && (
@@ -2374,9 +2716,17 @@ function ProgressPage({ workouts, onDelete, onUpdate, programData }: { workouts:
           </div>
         ) : (
           <div className="space-y-3">
-            {workouts.map(w => (
-              <div key={w.id} className="bg-white border-2 border-border rounded-3xl p-5 shadow-sm hover:border-accent/30 transition-all">
-                {editingId === w.id ? (
+            <AnimatePresence initial={false}>
+              {workouts.map(w => (
+                <motion.div 
+                  key={w.id}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20 }}
+                  layout
+                  className="bg-white border-2 border-border rounded-3xl p-5 shadow-sm hover:border-accent/30 transition-all"
+                >
+                  {editingId === w.id ? (
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-2">
                       <input 
@@ -2426,8 +2776,9 @@ function ProgressPage({ workouts, onDelete, onUpdate, programData }: { workouts:
                     </div>
                   </div>
                 )}
-              </div>
+              </motion.div>
             ))}
+            </AnimatePresence>
           </div>
         )}
       </div>
@@ -2533,15 +2884,23 @@ function StrengthPage({ records, onSave, onDelete, onUpdate, programData }: { re
           <div className="text-center py-16 bg-white rounded-3xl border-2 border-dashed border-border text-muted text-sm font-medium">Нет записей. Фиксируй веса после тренировки! 🏋️‍♀️</div>
         ) : (
           <div className="space-y-4">
-            {Object.entries(byExercise).map(([name, entries]) => {
-              const strengthEntries = entries as StrengthRecord[];
-              const sortedEntries = [...strengthEntries].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-              const latest = sortedEntries[0];
-              const best = sortedEntries.reduce((max, e) => e.weight > max.weight ? e : max, sortedEntries[0]);
-              
-              return (
-                <div key={name} className="bg-white border-2 border-border rounded-3xl p-6 space-y-4 shadow-sm">
-                  <div className="flex justify-between items-start">
+            <AnimatePresence initial={false}>
+              {Object.entries(byExercise).map(([name, entries]) => {
+                const strengthEntries = entries as StrengthRecord[];
+                const sortedEntries = [...strengthEntries].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                const latest = sortedEntries[0];
+                const best = sortedEntries.reduce((max, e) => e.weight > max.weight ? e : max, sortedEntries[0]);
+                
+                return (
+                  <motion.div 
+                    key={name}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    layout
+                    className="bg-white border-2 border-border rounded-3xl p-6 space-y-4 shadow-sm"
+                  >
+                    <div className="flex justify-between items-start">
                     <div className="text-[14px] font-bold text-text flex-1">{name}</div>
                   </div>
                   
@@ -2565,9 +2924,16 @@ function StrengthPage({ records, onSave, onDelete, onUpdate, programData }: { re
 
                   <div className="space-y-2 pt-2 border-t border-border/50">
                     <div className="text-[10px] text-muted uppercase font-bold mb-2">История</div>
-                    {sortedEntries.map((entry, idx) => (
-                      <div key={entry.id || `${name}-${idx}`} className="flex justify-between items-center text-[12px] py-1">
-                        {editingId === entry.id ? (
+                    <AnimatePresence initial={false}>
+                      {sortedEntries.map((entry, idx) => (
+                        <motion.div 
+                          key={entry.id || `${name}-${idx}`}
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="flex justify-between items-center text-[12px] py-1"
+                        >
+                          {editingId === entry.id ? (
                           <div className="flex-1 flex gap-2 items-center">
                             <input 
                               type="number" 
@@ -2599,12 +2965,14 @@ function StrengthPage({ records, onSave, onDelete, onUpdate, programData }: { re
                             </div>
                           </>
                         )}
-                      </div>
+                      </motion.div>
                     ))}
+                    </AnimatePresence>
                   </div>
-                </div>
+                </motion.div>
               );
             })}
+            </AnimatePresence>
           </div>
         )}
       </div>
@@ -2643,6 +3011,7 @@ function WeightPage({
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
   const [editDate, setEditDate] = useState('');
   const [editWeight, setEditWeight] = useState('');
   const [editAge, setEditAge] = useState('');
@@ -2691,6 +3060,8 @@ function WeightPage({
     setBicep('');
     setThigh('');
     setDate(new Date().toISOString().split('T')[0]);
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 3000);
   };
 
   const handleStartEdit = (m: WeightMeasurement) => {
@@ -2867,6 +3238,19 @@ function WeightPage({
         >
           Сохранить замер
         </button>
+
+        <AnimatePresence>
+          {saveSuccess && (
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="text-center text-emerald-500 text-xs font-bold"
+            >
+              ✅ Замер успешно сохранен!
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       <div className="bg-accent/5 border-2 border-accent/10 rounded-[32px] p-6 space-y-4">
@@ -2905,9 +3289,17 @@ function WeightPage({
           <div className="text-center py-16 bg-white rounded-3xl border-2 border-dashed border-border text-muted text-sm font-medium">Нет записей. Добавь первый! 📏</div>
         ) : (
           <div className="space-y-3">
-            {[...measurements].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(m => (
-              <div key={m.id} className="p-5 bg-surface-2/50 border-2 border-border rounded-3xl shadow-sm hover:border-accent/30 transition-all space-y-3">
-                {editingId === m.id ? (
+            <AnimatePresence initial={false}>
+              {[...measurements].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(m => (
+                <motion.div 
+                  key={m.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  layout
+                  className="p-5 bg-surface-2/50 border-2 border-border rounded-3xl shadow-sm hover:border-accent/30 transition-all space-y-3"
+                >
+                  {editingId === m.id ? (
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-2">
                       <div className="col-span-2">
@@ -3053,8 +3445,9 @@ function WeightPage({
                     </div>
                   </>
                 )}
-              </div>
+              </motion.div>
             ))}
+            </AnimatePresence>
           </div>
         )}
       </div>
@@ -3062,70 +3455,229 @@ function WeightPage({
   );
 }
 
-function TechPage() {
+function TechPage({ items, onEdit, isLoading }: { items: TechItem[]; onEdit: () => void; isLoading: boolean }) {
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}>
+          <Dumbbell className="text-accent w-8 h-8" />
+        </motion.div>
+      </div>
+    );
+  }
+
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
-      <div className="space-y-1">
-        <h3 className="font-serif text-xl text-accent font-light">Памятка по технике</h3>
-        <p className="text-[10px] text-muted uppercase tracking-wider">Финальная версия · одобрено куратором 😄</p>
-      </div>
-
-      <div className="bg-accent/5 border border-accent/30 rounded-sm p-4 space-y-3">
-        <h4 className="font-serif text-lg text-accent">⚡ Важные предупреждения</h4>
-        <div className="text-[11px] text-text leading-relaxed space-y-2">
-          <p>🍑 <strong className="text-accent-2">Мостик (Пн):</strong> Старт 30-40 кг — ок. Через 2 недели цель 50-60 кг. Должна гореть <span className="text-accent">попа, не поясница.</span></p>
-          <p>⚠️ <strong className="text-accent-2">Румынская тяга vs Становая:</strong> В Пн — акцент на растяжение, НЕ гонись за весом. Битва за вес — в Сб на становой.</p>
-          <p>💪 <strong className="text-accent-2">Отжимания:</strong> Если 12 раз от колен стало легко — сразу переходи на классику.</p>
+      <div className="flex justify-between items-start">
+        <div className="space-y-1">
+          <h3 className="font-serif text-xl text-accent font-light">Памятка по технике</h3>
+          <p className="text-[10px] text-muted uppercase tracking-wider">Настраиваемая база знаний</p>
         </div>
+        <button 
+          onClick={onEdit}
+          className="p-2 bg-accent/10 text-accent rounded-xl hover:bg-accent/20 transition-all"
+        >
+          <Settings size={20} />
+        </button>
       </div>
 
-      <TechCard 
-        title="Ягодичный мостик со штангой" 
-        subtitle="Главное упражнение программы"
-        points={[
-          "Штанга — на бёдрах, поролоновая накладка обязательна.",
-          "Стопы — на ширине плеч, пятки под коленями.",
-          "Пауза — 2 сек наверху, сжимай ягодицы максимально.",
-          "Не прогибай поясницу наверху — таз толкай вперёд, рёбра вниз."
-        ]}
-      />
-
-      <TechCard 
-        title="Болгарские сплит-приседания" 
-        subtitle="Акцент: Ягодицы, не квадрицепс"
-        points={[
-          "Наклон корпуса — вперёд 30–45°. Спина прямая.",
-          "Голень — почти вертикальная. Колено не за носок.",
-          "Толчок — строго в пятку.",
-          "Задняя нога — просто для равновесия. Не толкайся!"
-        ]}
-      />
-
-      <TechCard 
-        title="Становая тяга сумо" 
-        subtitle="Королева упражнений · Старт 40-50 кг"
-        points={[
-          "Стойка — широкая, носки развёрнуты наружу 45°.",
-          "Спина — нейтральная, НИКАКОГО округления!",
-          "Начало — отталкивай пол ногами, не тяни спиной.",
-          "Наверху — бёдра вперёд, сжимай ягодицы."
-        ]}
-      />
+      {items.length === 0 ? (
+        <div className="text-center py-20 bg-white rounded-[40px] border border-border shadow-sm">
+          <BookOpen className="mx-auto mb-4 text-accent/30" size={48} />
+          <p className="text-sm font-bold text-text mb-4">Список пуст</p>
+          <button 
+            onClick={onEdit} 
+            className="px-6 py-3 bg-accent text-white rounded-2xl text-xs font-bold uppercase tracking-widest"
+          >
+            Добавить первый совет
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <AnimatePresence initial={false}>
+            {items.map((item, idx) => (
+              <motion.div
+                key={item.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                transition={{ delay: idx * 0.05 }}
+                layout
+              >
+                <TechCard 
+                  title={item.title} 
+                  subtitle={item.subtitle}
+                  content={item.content}
+                />
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
+      )}
     </motion.div>
   );
 }
 
-function TechCard({ title, subtitle, points }: { title: string; subtitle: string; points: string[] }) {
+function TechEditor({ items, onSave, onClose }: { items: TechItem[]; onSave: (items: TechItem[]) => Promise<void>; onClose: () => void }) {
+  const [localItems, setLocalItems] = useState<TechItem[]>(items.length > 0 ? JSON.parse(JSON.stringify(items)) : [
+    { title: 'Ягодичный мостик', subtitle: 'Главное упражнение', content: '● Точка 1\n● Точка 2', order: 0 }
+  ]);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      await onSave(localItems);
+      onClose();
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const addItem = () => {
+    setLocalItems([...localItems, { title: 'Новый совет', subtitle: 'Описание', content: '', order: localItems.length }]);
+  };
+
+  const removeItem = (idx: number) => {
+    setLocalItems(localItems.filter((_, i) => i !== idx));
+  };
+
+  const updateItem = (idx: number, field: keyof TechItem, value: any) => {
+    setLocalItems(localItems.map((item, i) => i === idx ? { ...item, [field]: value } : item));
+  };
+
+  const moveItem = (idx: number, direction: 'up' | 'down') => {
+    const newItems = [...localItems];
+    if (direction === 'up' && idx > 0) {
+      [newItems[idx - 1], newItems[idx]] = [newItems[idx], newItems[idx - 1]];
+    } else if (direction === 'down' && idx < newItems.length - 1) {
+      [newItems[idx + 1], newItems[idx]] = [newItems[idx], newItems[idx + 1]];
+    }
+    setLocalItems(newItems.map((item, i) => ({ ...item, order: i })));
+  };
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }} 
+      animate={{ opacity: 1 }} 
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
+    >
+      <motion.div 
+        initial={{ scale: 0.9, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        className="bg-bg w-full max-w-2xl max-h-[90vh] rounded-[40px] shadow-2xl flex flex-col overflow-hidden border border-border"
+      >
+        <div className="p-6 border-b border-border flex justify-between items-center bg-white">
+          <div>
+            <h2 className="text-xl font-display font-bold text-accent">Редактор Техники</h2>
+            <p className="text-[10px] text-muted uppercase font-bold tracking-widest mt-1">Настрой базу знаний</p>
+          </div>
+          <button onClick={onClose} className="p-2 text-muted hover:text-accent transition-colors">
+            <X size={24} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-6 no-scrollbar">
+          {localItems.map((item, idx) => (
+            <div key={idx} className="bg-white p-6 rounded-3xl border border-border shadow-sm space-y-4 relative group">
+              <div className="absolute top-4 right-4 flex gap-2">
+                <button onClick={() => moveItem(idx, 'up')} className="p-1 text-muted hover:text-accent"><ChevronUp size={16} /></button>
+                <button onClick={() => moveItem(idx, 'down')} className="p-1 text-muted hover:text-accent"><ChevronDown size={16} /></button>
+                <button onClick={() => removeItem(idx)} className="p-1 text-muted hover:text-red-500"><Trash2 size={16} /></button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[9px] text-muted uppercase font-bold ml-1">Заголовок</label>
+                  <input 
+                    type="text" 
+                    value={item.title}
+                    onChange={(e) => updateItem(idx, 'title', e.target.value)}
+                    className="w-full py-2 px-3 bg-surface-2/30 border border-border rounded-lg text-xs font-bold focus:border-accent outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[9px] text-muted uppercase font-bold ml-1">Подзаголовок</label>
+                  <input 
+                    type="text" 
+                    value={item.subtitle}
+                    onChange={(e) => updateItem(idx, 'subtitle', e.target.value)}
+                    className="w-full py-2 px-3 bg-surface-2/30 border border-border rounded-lg text-xs font-bold focus:border-accent outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[9px] text-muted uppercase font-bold ml-1">Описание техники</label>
+                <textarea 
+                  value={item.content}
+                  onChange={(e) => updateItem(idx, 'content', e.target.value)}
+                  placeholder="● Носки наружу&#10;● Спина прямая..."
+                  className="w-full h-32 py-3 px-4 bg-surface-2/30 border border-border rounded-xl text-xs focus:border-accent outline-none resize-none transition-all"
+                />
+                <p className="text-[9px] text-muted italic ml-1">Совет: Используй ● или * для списков. Переносы строк сохраняются.</p>
+              </div>
+            </div>
+          ))}
+
+          <button 
+            onClick={addItem}
+            className="w-full py-4 border-2 border-dashed border-accent text-accent font-bold rounded-3xl hover:bg-accent/5 transition-all flex items-center justify-center gap-2"
+          >
+            <Plus size={20} /> Добавить карточку техники
+          </button>
+        </div>
+
+        <div className="p-6 border-t border-border bg-white flex gap-3">
+          <button 
+            onClick={onClose}
+            className="flex-1 py-4 border-2 border-border text-muted font-bold rounded-2xl hover:bg-surface-2 transition-all"
+          >
+            Отмена
+          </button>
+          <button 
+            onClick={handleSave}
+            disabled={isSaving}
+            className="flex-[2] py-4 bg-accent text-white font-bold rounded-2xl shadow-lg shadow-accent/20 hover:bg-accent/90 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {isSaving ? (
+              <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}>
+                <Dumbbell size={20} />
+              </motion.div>
+            ) : (
+              <>
+                <Save size={20} />
+                Сохранить базу знаний
+              </>
+            )}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function TechCard({ title, subtitle, content }: { title: string; subtitle: string; content: string }) {
+  // Pre-process content to handle ● and * as markdown lists if they aren't already
+  const processedContent = content
+    .split('\n')
+    .map(line => {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('●') || trimmed.startsWith('•')) {
+        return `* ${trimmed.substring(1).trim()}`;
+      }
+      return line;
+    })
+    .join('\n');
+
   return (
     <div className="bg-white border-2 border-border border-l-8 border-l-accent rounded-3xl p-6 space-y-3 shadow-sm">
       <h4 className="font-display text-xl text-accent font-bold">{title}</h4>
       <p className="text-[10px] text-accent-2 uppercase font-bold tracking-widest">{subtitle}</p>
-      <ul className="text-[12px] text-text leading-relaxed space-y-2">
-        {points.map((p, i) => <li key={i} className="flex gap-2">
-          <span className="text-accent">✦</span>
-          <span>{p}</span>
-        </li>)}
-      </ul>
+      <div className="text-[12px] text-text leading-relaxed prose prose-sm max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0.5 prose-li:marker:text-accent">
+        <ReactMarkdown>{processedContent}</ReactMarkdown>
+      </div>
     </div>
   );
 }
