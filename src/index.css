@@ -16,6 +16,29 @@
   --color-border: #e5e7eb;
 }
 
+.dark {
+  --color-bg: #0f172a;
+  --color-surface: #1e293b;
+  --color-surface-2: #334155;
+  --color-accent: #f87171;
+  --color-accent-2: #fb923c;
+  --color-text: #f1f5f9;
+  --color-muted: #94a3b8;
+  --color-done: #34d399;
+  --color-border: #334155;
+}
+
+/* Hide number input arrows */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type=number] {
+  -moz-appearance: textfield;
+}
+
 @layer base {
   body {
     @apply bg-bg text-text font-sans;

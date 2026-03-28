@@ -42,7 +42,12 @@ import {
   RotateCcw,
   Bell,
   Mic,
-  Square
+  Square,
+  Trophy,
+  Moon,
+  Sun,
+  Trash2,
+  LogOut
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
@@ -78,6 +83,7 @@ import {
   addDoc,
   writeBatch,
   getDocs,
+  serverTimestamp,
   User,
   OperationType,
   handleFirestoreError
@@ -156,6 +162,12 @@ interface UserProfile {
   email: string;
   photoURL?: string;
   role: 'user' | 'admin';
+  age?: string | number;
+  goal?: string;
+  reminders?: any[];
+  createdAt?: string;
+  updatedAt?: string;
+  uid?: string;
 }
 
 // Program Data
@@ -424,7 +436,7 @@ function AppContent() {
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [measurements, setMeasurements] = useState<WeightMeasurement[]>([]);
   const [strengthRecords, setStrengthRecords] = useState<StrengthRecord[]>([]);
-  const [activeTab, setActiveTab] = useState<'today' | 'progress' | 'strength' | 'tech' | 'coach' | 'profile'>('today');
+  const [activeTab, setActiveTab] = useState<'today' | 'progress' | 'strength' | 'tech' | 'coach' | 'profile' | 'measurements'>('today');
   const [coachMessages, setCoachMessages] = useState<any[]>(() => {
     const saved = localStorage.getItem('coach_messages');
     return saved ? JSON.parse(saved) : [];
@@ -450,6 +462,21 @@ function AppContent() {
   const [currentSets, setCurrentSets] = useState<Record<number, any[][]>>({});
   const [currentNotes, setCurrentNotes] = useState<Record<number, string>>({});
   const [isWorkoutStateLoading, setIsWorkoutStateLoading] = useState(true);
+
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    const saved = localStorage.getItem('theme');
+    if (saved) return saved as 'light' | 'dark';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  });
+
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    localStorage.setItem('theme', theme);
+  }, [theme]);
 
   // Auth Listener
   useEffect(() => {
@@ -485,7 +512,17 @@ function AppContent() {
         const data = snapshot.data();
         setCurrentDay(prev => prev !== data.currentDay ? (data.currentDay || 'День 1') : prev);
         setCheckedExercises(prev => JSON.stringify(prev) !== JSON.stringify(data.checkedExercises || []) ? (data.checkedExercises || []) : prev);
-        setCurrentSets(prev => JSON.stringify(prev) !== JSON.stringify(data.currentSets || {}) ? (data.currentSets || {}) : prev);
+        setCurrentSets(prev => {
+          let sets = data.currentSets || {};
+          if (typeof sets === 'string') {
+            try {
+              sets = JSON.parse(sets);
+            } catch (e) {
+              sets = {};
+            }
+          }
+          return JSON.stringify(prev) !== JSON.stringify(sets) ? sets : prev;
+        });
         setCurrentNotes(prev => JSON.stringify(prev) !== JSON.stringify(data.currentNotes || {}) ? (data.currentNotes || {}) : prev);
       }
       setIsWorkoutStateLoading(false);
@@ -530,7 +567,13 @@ function AppContent() {
   const saveWorkoutState = async (updates: any) => {
     if (!user) return;
     try {
-      await setDoc(doc(db, 'current_workout', user.uid), updates, { merge: true });
+      // Serialize nested arrays if they exist (e.g., currentSets)
+      const serializedUpdates = { ...updates };
+      if (serializedUpdates.currentSets) {
+        serializedUpdates.currentSets = JSON.stringify(serializedUpdates.currentSets);
+      }
+      
+      await setDoc(doc(db, 'current_workout', user.uid), serializedUpdates, { merge: true });
     } catch (error) {
       console.error("Failed to save workout state:", error);
     }
@@ -773,6 +816,7 @@ function AppContent() {
         updates.email = currentUser.email || '';
         updates.photoURL = currentUser.photoURL || '';
         updates.role = 'user';
+        updates.uid = currentUser.uid;
         updates.createdAt = new Date().toISOString();
       } else {
         // If name or photo are missing in Firestore but available in Auth, restore them
@@ -783,10 +827,12 @@ function AppContent() {
         
         // Ensure required fields for isValidUserProfile are present
         if (!userData.role) updates.role = 'user';
+        if (!userData.uid) updates.uid = currentUser.uid;
         if (!userData.createdAt) updates.createdAt = new Date().toISOString();
       }
 
       if (Object.keys(updates).length > 0) {
+        updates.updatedAt = new Date().toISOString();
         await setDoc(userRef, updates, { merge: true });
       }
     } catch (error) {
@@ -798,8 +844,21 @@ function AppContent() {
   const handleUpdateProfile = async (data: Partial<UserProfile>) => {
     if (!user) return;
     try {
-      await setDoc(doc(db, 'users', user.uid), data, { merge: true });
-      // Removed alert for better mobile/iframe compatibility
+      const userRef = doc(db, 'users', user.uid);
+      const docSnap = await getDoc(userRef);
+      if (!docSnap.exists()) {
+        const fullData = {
+          ...data,
+          displayName: data.displayName || user.displayName || 'Анонимный пользователь',
+          email: user.email || '',
+          photoURL: data.photoURL || user.photoURL || '',
+          role: 'user',
+          createdAt: new Date().toISOString()
+        };
+        await setDoc(userRef, fullData);
+      } else {
+        await setDoc(userRef, { ...data, updatedAt: new Date().toISOString() }, { merge: true });
+      }
       return Promise.resolve();
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}`);
@@ -840,6 +899,26 @@ function AppContent() {
 
     try {
       await addDoc(collection(db, 'workouts'), workoutToSave);
+      
+      // Automatically save best sets to strength records
+      for (const ex of workoutToSave.exercises) {
+        if (ex.sets.length > 0) {
+          // Find best set (highest weight, then highest reps)
+          const bestSet = ex.sets.reduce((prev, curr) => {
+            if (curr.weight > prev.weight) return curr;
+            if (curr.weight === prev.weight && curr.reps > prev.reps) return curr;
+            return prev;
+          }, ex.sets[0]);
+
+          if (bestSet.weight > 0) {
+            await handleSaveStrength({
+              exercise: ex.name,
+              weight: bestSet.weight,
+              reps: bestSet.reps
+            });
+          }
+        }
+      }
       
       // Reset state and move to next day
       const days = Object.keys(programData);
@@ -914,14 +993,18 @@ function AppContent() {
         Object.entries(data)
           .filter(([k, v]) => v !== undefined && k !== 'id' && allowedFields.includes(k))
           .map(([k, v]) => {
-            if (numberFields.includes(k) && typeof v === 'string') {
+            if (numberFields.includes(k)) {
               const num = Number(v);
-              return [k, isNaN(num) ? null : num];
+              return [k, isNaN(num) || !isFinite(num) ? null : num];
             }
             return [k, v];
           })
-          .filter(([k, v]) => v !== null || k !== 'weight') // Ensure weight is not null
+          .filter(([k, v]) => v !== null || k === 'weight') // Ensure weight is not removed
       );
+      
+      if (cleanData.weight === null || cleanData.weight === undefined) {
+        cleanData.weight = 0;
+      }
       
       let finalDate = new Date().toISOString();
       if (cleanData.date) {
@@ -968,14 +1051,18 @@ function AppContent() {
         Object.entries(data)
           .filter(([k, v]) => v !== undefined && k !== 'id' && allowedFields.includes(k))
           .map(([k, v]) => {
-            if (numberFields.includes(k) && typeof v === 'string') {
+            if (numberFields.includes(k)) {
               const num = Number(v);
-              return [k, isNaN(num) ? null : num];
+              return [k, isNaN(num) || !isFinite(num) ? null : num];
             }
             return [k, v];
           })
-          .filter(([k, v]) => v !== null || k !== 'weight') // Ensure weight is not null
+          .filter(([k, v]) => v !== null || k === 'weight') // Ensure weight is not removed
       );
+      
+      if (cleanData.weight === null) {
+        cleanData.weight = 0;
+      }
       
       if (cleanData.date) {
         try {
@@ -998,6 +1085,14 @@ function AppContent() {
       const cleanData = Object.fromEntries(
         Object.entries(data).filter(([_, v]) => v !== undefined)
       );
+      
+      if ('weight' in cleanData) {
+        cleanData.weight = isNaN(Number(cleanData.weight)) || !isFinite(Number(cleanData.weight)) ? 0 : Number(cleanData.weight);
+      }
+      if ('reps' in cleanData) {
+        cleanData.reps = isNaN(Number(cleanData.reps)) || !isFinite(Number(cleanData.reps)) ? 0 : Number(cleanData.reps);
+      }
+
       await addDoc(collection(db, 'strength'), {
         userId: user.uid,
         date: new Date().toISOString(),
@@ -1045,6 +1140,14 @@ function AppContent() {
       const cleanData = Object.fromEntries(
         Object.entries(data).filter(([_, v]) => v !== undefined)
       );
+      
+      if ('weight' in cleanData) {
+        cleanData.weight = isNaN(Number(cleanData.weight)) || !isFinite(Number(cleanData.weight)) ? 0 : Number(cleanData.weight);
+      }
+      if ('reps' in cleanData) {
+        cleanData.reps = isNaN(Number(cleanData.reps)) || !isFinite(Number(cleanData.reps)) ? 0 : Number(cleanData.reps);
+      }
+
       await setDoc(doc(db, 'strength', id), cleanData, { merge: true });
       
       // Update program tip if weight or exercise changed
@@ -1120,8 +1223,39 @@ function AppContent() {
 
         // Import profile
         if (imported.profile) {
-          await handleUpdateProfile(imported.profile);
-          count++;
+          const cleanProfile: any = {};
+          if (imported.profile.displayName && typeof imported.profile.displayName === 'string' && imported.profile.displayName.trim().length > 0) {
+            cleanProfile.displayName = imported.profile.displayName.trim();
+          }
+          if (imported.profile.photoURL && typeof imported.profile.photoURL === 'string') {
+            cleanProfile.photoURL = imported.profile.photoURL;
+          }
+          if (imported.profile.age !== undefined) {
+            cleanProfile.age = imported.profile.age;
+          }
+          if (imported.profile.goal !== undefined) {
+            cleanProfile.goal = imported.profile.goal;
+          }
+          if (imported.profile.createdAt && typeof imported.profile.createdAt === 'string') {
+            cleanProfile.createdAt = imported.profile.createdAt;
+          }
+          if (Array.isArray(imported.profile.reminders)) {
+            const cleanReminders = imported.profile.reminders
+              .filter((r: any) => r && typeof r === 'object' && typeof r.day === 'string' && typeof r.time === 'string' && r.day.length > 0 && r.time.length > 0)
+              .map((r: any) => {
+                const cleanR: any = { day: r.day, time: r.time };
+                if (r.label && typeof r.label === 'string') {
+                  cleanR.label = r.label.substring(0, 199);
+                }
+                return cleanR;
+              });
+            cleanProfile.reminders = cleanReminders.slice(0, 20);
+          }
+          
+          if (Object.keys(cleanProfile).length > 0) {
+            await handleUpdateProfile(cleanProfile);
+            count++;
+          }
         }
 
         // Flexible import logic for other data
@@ -1160,9 +1294,38 @@ function AppContent() {
                   workoutToSave.notes = '';
                 }
 
-                const cleanWorkout = Object.fromEntries(
-                  Object.entries(workoutToSave).filter(([_, v]) => v !== undefined)
-                );
+                let validDate = new Date().toISOString();
+                if (workoutToSave.date) {
+                  try {
+                    const d = new Date(workoutToSave.date);
+                    if (!isNaN(d.getTime())) {
+                      validDate = d.toISOString();
+                    }
+                  } catch (e) {}
+                }
+
+                const cleanWorkout: any = {
+                  userId: user.uid,
+                  date: validDate,
+                  day: String(workoutToSave.day || 'День 1'),
+                  exercises: Array.isArray(workoutToSave.exercises) 
+                    ? workoutToSave.exercises.slice(0, 50).map((ex: any) => ({
+                        name: String(ex.name || ''),
+                        sets: Array.isArray(ex.sets) 
+                          ? ex.sets.map((s: any) => ({
+                              weight: isNaN(Number(s.weight)) || !isFinite(Number(s.weight)) ? 0 : Number(s.weight),
+                              reps: isNaN(Number(s.reps)) || !isFinite(Number(s.reps)) ? 0 : Number(s.reps)
+                            }))
+                          : []
+                      }))
+                    : [],
+                };
+                if (workoutToSave.notes !== undefined && workoutToSave.notes !== null && String(workoutToSave.notes).trim() !== '') {
+                  cleanWorkout.notes = String(workoutToSave.notes);
+                }
+                if (workoutToSave.name !== undefined && workoutToSave.name !== null && String(workoutToSave.name).trim() !== '') {
+                  cleanWorkout.name = String(workoutToSave.name).substring(0, 100);
+                }
                 await addDoc(collection(db, 'workouts'), cleanWorkout);
                 count++;
               }
@@ -1172,9 +1335,36 @@ function AppContent() {
             if (measurementsToImport.length > 0) {
               for (const m of measurementsToImport) {
                 const { id, ...data } = m;
-                const cleanMeasurement = Object.fromEntries(
-                  Object.entries({ ...data, userId: user.uid }).filter(([_, v]) => v !== undefined)
-                );
+                let validDate = new Date().toISOString();
+                if (data.date) {
+                  try {
+                    const d = new Date(data.date);
+                    if (!isNaN(d.getTime())) {
+                      validDate = d.toISOString();
+                    }
+                  } catch (e) {}
+                }
+
+                const cleanMeasurement: any = {
+                  userId: user.uid,
+                  date: validDate,
+                  weight: isNaN(Number(data.weight)) || !isFinite(Number(data.weight)) ? 0 : Number(data.weight),
+                };
+                const optionalFields = ['age', 'fat', 'muscle', 'water', 'chest', 'waist', 'waistHigh', 'waistNavel', 'waistWidest', 'hips', 'bicep', 'thigh', 'bmi', 'visceralFat', 'skeletalMuscleIndex', 'waistHipRatio', 'bmr', 'boneMass', 'protein', 'fatFreeMass', 'biologicalAge', 'heartRate'];
+                for (const field of optionalFields) {
+                  if (data[field] !== undefined && data[field] !== null) {
+                    const num = Number(data[field]);
+                    if (!isNaN(num) && isFinite(num)) {
+                      cleanMeasurement[field] = num;
+                    }
+                  }
+                }
+                const stringFields = ['bodyType', 'bodyShape'];
+                for (const field of stringFields) {
+                  if (data[field] !== undefined && data[field] !== null) {
+                    cleanMeasurement[field] = String(data[field]);
+                  }
+                }
                 await addDoc(collection(db, 'measurements'), cleanMeasurement);
                 count++;
               }
@@ -1184,9 +1374,23 @@ function AppContent() {
             if (strengthToImport.length > 0) {
               for (const s of strengthToImport) {
                 const { id, ...data } = s;
-                const cleanStrength = Object.fromEntries(
-                  Object.entries({ ...data, userId: user.uid }).filter(([_, v]) => v !== undefined)
-                );
+                let validDate = new Date().toISOString();
+                if (data.date) {
+                  try {
+                    const d = new Date(data.date);
+                    if (!isNaN(d.getTime())) {
+                      validDate = d.toISOString();
+                    }
+                  } catch (e) {}
+                }
+
+                const cleanStrength: any = {
+                  userId: user.uid,
+                  date: validDate,
+                  exercise: String(data.exercise || ''),
+                  weight: isNaN(Number(data.weight)) || !isFinite(Number(data.weight)) ? 0 : Number(data.weight),
+                  reps: isNaN(Number(data.reps)) || !isFinite(Number(data.reps)) ? 0 : Number(data.reps),
+                };
                 await addDoc(collection(db, 'strength'), cleanStrength);
                 count++;
               }
@@ -1236,7 +1440,7 @@ function AppContent() {
         <motion.div 
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="max-w-md w-full bg-white p-10 rounded-[40px] shadow-2xl border border-border"
+          className="max-w-md w-full bg-surface p-10 rounded-[40px] shadow-2xl border border-border"
         >
           <div className="logo text-5xl mb-4 font-display font-bold text-accent">FitTrack-Pro <span className="text-accent-2">·</span> Тренировки</div>
           <p className="text-muted mb-10 text-lg font-medium">Твой личный фитнес-дневник для сияющих результатов! ✨</p>
@@ -1259,46 +1463,38 @@ function AppContent() {
   return (
     <div className="min-h-screen bg-bg text-text font-sans pb-24">
       {/* Header */}
-      <header className="header p-8 border-b border-border sticky top-0 bg-bg/80 backdrop-blur-md z-40">
-        <div className="flex justify-between items-start mb-6">
+      <header className="header p-4 border-b border-border sticky top-0 bg-bg/80 backdrop-blur-md z-40">
+        <div className="flex justify-between items-center">
           <div className="flex items-center gap-3">
             <div 
-              className="w-10 h-10 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent overflow-hidden cursor-pointer"
+              className="w-8 h-8 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent overflow-hidden cursor-pointer"
               onClick={() => setActiveTab('profile')}
             >
               {userProfile?.photoURL ? (
                 <img src={userProfile.photoURL} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               ) : (
-                <UserIcon size={20} />
+                <UserIcon size={16} />
               )}
             </div>
             <div 
               className="cursor-pointer"
               onClick={() => setActiveTab('profile')}
             >
-              <div className="logo text-xl font-display font-bold text-accent leading-none">
+              <div className="logo text-lg font-display font-bold text-accent leading-none">
                 {userProfile?.displayName || 'Таня'} <span className="text-accent-2">·</span> Тренировки
               </div>
-              <div className="text-[10px] text-muted uppercase font-semibold tracking-[0.15em] mt-1">{weekLabel}</div>
+              <div className="text-[9px] text-muted uppercase font-semibold tracking-[0.15em] mt-0.5">{weekLabel}</div>
             </div>
           </div>
           <div className="text-right">
-            <div className="text-4xl font-display font-bold text-accent leading-none">{streakWeeks}</div>
-            <div className="text-[9px] text-muted uppercase font-semibold tracking-[0.15em]">недель подряд</div>
+            <div className="text-2xl font-display font-bold text-accent leading-none">{streakWeeks}</div>
+            <div className="text-[8px] text-muted uppercase font-semibold tracking-[0.15em]">недель подряд</div>
           </div>
-        </div>
-        
-        <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-          <NavTab active={activeTab === 'today'} onClick={() => setActiveTab('today')} label="Сегодня" />
-          <NavTab active={activeTab === 'coach'} onClick={() => setActiveTab('coach')} label="FitTrack-Pro" />
-          <NavTab active={activeTab === 'progress'} onClick={() => setActiveTab('progress')} label="История" />
-          <NavTab active={activeTab === 'strength'} onClick={() => setActiveTab('strength')} label="Веса" />
-          <NavTab active={activeTab === 'tech'} onClick={() => setActiveTab('tech')} label="Техника" />
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="max-w-2xl mx-auto p-6">
+      <main className={`max-w-2xl mx-auto px-6 pt-6 ${activeTab === 'coach' ? 'pb-[64px]' : 'pb-20'}`}>
         <AnimatePresence mode="wait">
           {activeTab === 'today' && (
             <TodayPage 
@@ -1381,18 +1577,24 @@ function AppContent() {
               isLoading={isTechLoading}
             />
           )}
+          {activeTab === 'measurements' && (
+            <WeightPage 
+              measurements={measurements} 
+              onSave={handleSaveWeight} 
+              onDelete={handleDeleteWeight}
+              onUpdate={handleUpdateWeight}
+            />
+          )}
           {activeTab === 'profile' && (
             <ProfilePage 
               profile={userProfile} 
               onUpdate={handleUpdateProfile} 
               onLogout={handleLogout}
-              measurements={measurements}
-              onSaveWeight={handleSaveWeight}
-              onDeleteWeight={handleDeleteWeight}
-              onUpdateWeight={handleUpdateWeight}
+              setActiveTab={setActiveTab}
               onExportData={handleExportData}
               onImportData={handleImportData}
-              setNotification={setNotification}
+              theme={theme}
+              setTheme={setTheme}
             />
           )}
         </AnimatePresence>
@@ -1427,7 +1629,7 @@ function AppContent() {
             <motion.div 
               initial={{ scale: 0.9, y: 20 }}
               animate={{ scale: 1, y: 0 }}
-              className="bg-white w-full max-w-sm rounded-[40px] p-8 shadow-2xl text-center border-4 border-accent/20"
+              className="bg-surface w-full max-w-sm rounded-[40px] p-8 shadow-2xl text-center border-4 border-accent/20"
             >
               <div className="w-20 h-20 bg-accent/10 rounded-[30px] flex items-center justify-center text-accent mx-auto mb-6">
                 <Bell size={40} className="animate-bounce" />
@@ -1454,7 +1656,7 @@ function AppContent() {
             <motion.div 
               initial={{ scale: 0.9, y: 20 }}
               animate={{ scale: 1, y: 0 }}
-              className="bg-white w-full max-w-sm rounded-[40px] p-8 shadow-2xl text-center border-4 border-accent/20"
+              className="bg-surface w-full max-w-sm rounded-[40px] p-8 shadow-2xl text-center border-4 border-accent/20"
             >
               <div className="w-20 h-20 bg-accent/10 rounded-[30px] flex items-center justify-center text-accent mx-auto mb-6">
                 <AlertTriangle size={40} className="animate-pulse" />
@@ -1464,7 +1666,7 @@ function AppContent() {
               <div className="flex gap-4">
                 <button 
                   onClick={() => setConfirmDialog(null)}
-                  className="flex-1 py-4 bg-gray-100 text-gray-600 font-bold rounded-2xl active:scale-95 transition-all"
+                  className="flex-1 py-4 bg-surface-2 text-muted font-bold rounded-2xl active:scale-95 transition-all"
                 >
                   Отмена
                 </button>
@@ -1480,14 +1682,33 @@ function AppContent() {
         )}
       </AnimatePresence>
 
-      {/* Logout Button (Floating or in Profile) */}
-      <div className="fixed bottom-6 right-6 z-50">
-        <button 
-          onClick={handleLogout}
-          className="w-14 h-14 bg-white border border-border rounded-2xl flex items-center justify-center text-muted hover:text-accent hover:border-accent transition-all shadow-xl active:scale-90"
-        >
-          <LogOut size={24} />
-        </button>
+      {/* Bottom Navigation */}
+      <div className="fixed bottom-0 left-0 right-0 bg-surface border-t border-border pb-safe pt-2 px-2 z-50 flex justify-around items-center shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
+        {[
+          { id: 'today', label: 'Тренировка', icon: Dumbbell },
+          { id: 'measurements', label: 'Замеры', icon: Scale },
+          { id: 'strength', label: 'Силовые', icon: Trophy },
+          { id: 'progress', label: 'Прогресс', icon: BarChart3 },
+          { id: 'coach', label: 'Коуч', icon: Bot },
+          { id: 'profile', label: 'Профиль', icon: UserIcon },
+        ].map(tab => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`flex flex-col items-center justify-center w-14 h-14 transition-all ${isActive ? 'text-accent' : 'text-muted hover:text-accent/70'}`}
+            >
+              <div className={`relative flex items-center justify-center w-8 h-8 rounded-xl mb-1 transition-all ${isActive ? 'bg-accent/10' : ''}`}>
+                <Icon size={18} strokeWidth={isActive ? 2.5 : 2} />
+              </div>
+              <span className={`text-[8px] font-bold uppercase tracking-wider ${isActive ? 'text-accent' : 'text-muted'}`}>
+                {tab.label}
+              </span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -1651,7 +1872,7 @@ function ProgramEditor({ program, onSave, onClose }: { program: any; onSave: (da
         animate={{ scale: 1, y: 0 }}
         className="bg-bg w-full max-w-2xl max-h-[90vh] rounded-[40px] shadow-2xl flex flex-col overflow-hidden border border-border"
       >
-        <div className="p-6 border-b border-border flex justify-between items-center bg-white">
+        <div className="p-6 border-b border-border flex justify-between items-center bg-surface">
           <div>
             <h2 className="text-xl font-display font-bold text-accent">Редактор программы</h2>
             <p className="text-[10px] text-muted uppercase font-bold tracking-widest mt-1">Настрой тренировки под себя</p>
@@ -1670,39 +1891,39 @@ function ProgramEditor({ program, onSave, onClose }: { program: any; onSave: (da
               <div key={day} className="relative group flex-shrink-0">
                 <button 
                   onClick={() => setSelectedDay(day)}
-                  className={`px-4 py-2 rounded-xl text-[11px] font-bold border transition-all ${
-                    selectedDay === day ? 'bg-accent text-white border-accent' : 'bg-white border-border text-muted'
+                  className={`px-5 py-3 rounded-2xl text-[11px] font-bold border transition-all shadow-sm ${
+                    selectedDay === day ? 'bg-accent text-white border-accent' : 'bg-surface border-border text-muted hover:border-accent/30'
                   }`}
                 >
                   {day}
                 </button>
-                <div className={`absolute -top-1 -right-1 flex gap-0.5 transition-opacity ${
-                  selectedDay === day ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-                }`}>
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); moveDay(day, 'left'); }}
-                    className="bg-accent text-white rounded-full p-0.5 shadow-sm hover:scale-110 transition-transform"
-                    title="Влево"
-                  >
-                    <ChevronLeft size={10} />
-                  </button>
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); moveDay(day, 'right'); }}
-                    className="bg-accent text-white rounded-full p-0.5 shadow-sm hover:scale-110 transition-transform"
-                    title="Вправо"
-                  >
-                    <ChevronRight size={10} />
-                  </button>
-                  {Object.keys(localProgram).length > 1 && (
+                {selectedDay === day && (
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 flex gap-1.5 bg-surface p-1 rounded-full shadow-lg border border-border z-10">
                     <button 
-                      onClick={(e) => { e.stopPropagation(); removeDay(day); }}
-                      className="bg-red-500 text-white rounded-full p-0.5 shadow-sm hover:scale-110 transition-transform"
-                      title="Удалить"
+                      onClick={(e) => { e.stopPropagation(); moveDay(day, 'left'); }}
+                      className="p-1.5 bg-surface-2 rounded-full text-muted hover:text-accent transition-colors"
+                      title="Влево"
                     >
-                      <X size={10} />
+                      <ChevronLeft size={12} />
                     </button>
-                  )}
-                </div>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); moveDay(day, 'right'); }}
+                      className="p-1.5 bg-surface-2 rounded-full text-muted hover:text-accent transition-colors"
+                      title="Вправо"
+                    >
+                      <ChevronRight size={12} />
+                    </button>
+                    {Object.keys(localProgram).length > 1 && (
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); removeDay(day); }}
+                        className="p-1.5 bg-red-50 rounded-full text-red-500 hover:bg-red-100 transition-colors"
+                        title="Удалить"
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
             <button 
@@ -1714,7 +1935,7 @@ function ProgramEditor({ program, onSave, onClose }: { program: any; onSave: (da
           </div>
 
           {/* Day Settings */}
-          <div className="bg-white p-6 rounded-3xl border border-border shadow-sm space-y-4">
+          <div className="bg-surface p-6 rounded-3xl border border-border shadow-sm space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-[10px] text-muted uppercase font-bold tracking-widest ml-1">Название дня</label>
@@ -1770,7 +1991,7 @@ function ProgramEditor({ program, onSave, onClose }: { program: any; onSave: (da
 
             <div className="space-y-3">
               {localProgram[selectedDay].exercises.map((ex: any, idx: number) => (
-                <div key={idx} className="bg-white p-4 rounded-2xl border border-border shadow-sm space-y-3 relative group">
+                <div key={idx} className="bg-surface p-4 rounded-2xl border border-border shadow-sm space-y-3 relative group">
                   <button 
                     onClick={() => removeExercise(selectedDay, idx)}
                     className="absolute top-2 right-2 p-1 text-muted hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
@@ -1841,7 +2062,7 @@ function ProgramEditor({ program, onSave, onClose }: { program: any; onSave: (da
           </div>
         </div>
 
-        <div className="p-6 border-t border-border bg-white flex gap-3">
+        <div className="p-6 border-t border-border bg-surface flex gap-3">
           <button 
             onClick={onClose}
             className="flex-1 py-4 border-2 border-border text-muted font-bold rounded-2xl hover:bg-surface-2 transition-all"
@@ -1851,9 +2072,15 @@ function ProgramEditor({ program, onSave, onClose }: { program: any; onSave: (da
           <button 
             onClick={handleSave}
             disabled={isSaving}
-            className="flex-[2] py-4 bg-accent text-white font-bold rounded-2xl shadow-lg hover:shadow-xl active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+            className="flex-[2] py-4 bg-accent text-white font-bold rounded-2xl shadow-lg hover:shadow-xl active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center gap-3"
           >
-            {isSaving ? <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}><Settings size={20} /></motion.div> : <Save size={20} />}
+            {isSaving ? (
+              <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}>
+                <Settings size={22} />
+              </motion.div>
+            ) : (
+              <Save size={22} />
+            )}
             {isSaving ? 'Сохранение...' : 'Сохранить программу'}
           </button>
         </div>
@@ -2012,6 +2239,47 @@ function CoachPage({
         - ТЕХНИКА ВЫПОЛНЕНИЯ: ${JSON.stringify(techData)}
       `;
 
+      const callGeminiWithRetry = async (params: any, maxRetries = 3) => {
+        let retryCount = 0;
+        while (retryCount <= maxRetries) {
+          try {
+            return await ai.models.generateContent(params);
+          } catch (err: any) {
+            const errStr = err?.message?.toLowerCase() || "";
+            const isRateLimit = errStr.includes("quota") || errStr.includes("429") || errStr.includes("rate limit") || errStr.includes("rate exceeded");
+            
+            if (isRateLimit && retryCount < maxRetries) {
+              retryCount++;
+              const delay = Math.pow(2, retryCount) * 1000;
+              console.warn(`Rate limit hit, retrying in ${delay}ms (attempt ${retryCount}/${maxRetries})...`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+              continue;
+            }
+            
+            if (errStr.includes("safety") || errStr.includes("blocked") || errStr.includes("candidate")) {
+              console.warn("Safety block triggered, retrying with minimal context...");
+              return await ai.models.generateContent({
+                model: modelName,
+                contents: [{ 
+                  role: 'user', 
+                  parts: [{ text: `Пользователь спрашивает: "${textToSend}". Ответь на вопрос пользователя максимально полезно, используя свои знания о фитнесе.` }] 
+                }],
+                config: {
+                  safetySettings: [
+                    { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+                    { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                    { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                    { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE }
+                  ]
+                }
+              });
+            }
+            throw err;
+          }
+        }
+        throw new Error("Превышено количество попыток запроса к ИИ.");
+      };
+
       const userParts: any[] = [];
       if (textToSend && typeof textToSend === 'string' && textToSend.trim()) {
         userParts.push({ text: textToSend });
@@ -2094,153 +2362,128 @@ function CoachPage({
 
       const contents = [...buildHistory(messages), { role: 'user', parts: userParts }];
 
-      let response;
-      try {
-        response = await ai.models.generateContent({
-          model: modelName,
-          contents: contents,
-          config: {
-            systemInstruction: systemPrompt + "\n\nДАННЫЕ ПОЛЬЗОВАТЕЛЯ ДЛЯ АНАЛИЗА:\n" + dataContext,
-            safetySettings: [
-              { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-              { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-              { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-              { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE }
-            ],
-            tools: [{
-              functionDeclarations: [{
-                name: "update_training_program",
-                description: "Обновить программу тренировок пользователя. Принимает полный объект программы.",
-                parameters: {
-                  type: Type.OBJECT,
-                  properties: {
-                    newData: {
-                      type: Type.OBJECT,
-                      description: "Новый объект программы тренировок.",
-                      properties: {
-                        days: {
-                          type: Type.ARRAY,
-                          description: "Список тренировочных дней",
-                          items: {
-                            type: Type.OBJECT,
-                            properties: {
-                              name: { type: Type.STRING, description: "Название дня (например, День 1)" },
-                              subtitle: { type: Type.STRING, description: "Подзаголовок (например, Ноги)" },
-                              isCardio: { type: Type.BOOLEAN, description: "Является ли тренировка кардио" },
-                              exercises: {
-                                type: Type.ARRAY,
-                                description: "Список упражнений",
-                                items: {
-                                  type: Type.OBJECT,
-                                  properties: {
-                                    name: { type: Type.STRING, description: "Название упражнения" },
-                                    scheme: { type: Type.STRING, description: "Схема выполнения (например, 3 x 12 или 30 мин)" },
-                                    sets: { type: Type.NUMBER, description: "Количество подходов или интервалов" },
-                                    tip: { type: Type.STRING, description: "Подсказка или техника выполнения" },
-                                    isCardio: { type: Type.BOOLEAN, description: "Является ли упражнение кардио" },
-                                    fields: { 
-                                      type: Type.ARRAY, 
-                                      items: { type: Type.STRING },
-                                      description: "Поля для ввода данных (например, ['мин', 'км', 'пульс'])"
-                                    }
-                                  },
-                                  required: ["name", "scheme", "sets"]
-                                }
+      const response = await callGeminiWithRetry({
+        model: modelName,
+        contents: contents,
+        config: {
+          systemInstruction: systemPrompt + "\n\nДАННЫЕ ПОЛЬЗОВАТЕЛЯ ДЛЯ АНАЛИЗА:\n" + dataContext,
+          safetySettings: [
+            { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+            { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+            { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+            { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE }
+          ],
+          tools: [{
+            functionDeclarations: [{
+              name: "update_training_program",
+              description: "Обновить программу тренировок пользователя. Принимает полный объект программы.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  newData: {
+                    type: Type.OBJECT,
+                    description: "Новый объект программы тренировок.",
+                    properties: {
+                      days: {
+                        type: Type.ARRAY,
+                        description: "Список тренировочных дней",
+                        items: {
+                          type: Type.OBJECT,
+                          properties: {
+                            name: { type: Type.STRING, description: "Название дня (например, День 1)" },
+                            subtitle: { type: Type.STRING, description: "Подзаголовок (например, Ноги)" },
+                            isCardio: { type: Type.BOOLEAN, description: "Является ли тренировка кардио" },
+                            exercises: {
+                              type: Type.ARRAY,
+                              description: "Список упражнений",
+                              items: {
+                                type: Type.OBJECT,
+                                properties: {
+                                  name: { type: Type.STRING, description: "Название упражнения" },
+                                  scheme: { type: Type.STRING, description: "Схема выполнения (например, 3 x 12 или 30 мин)" },
+                                  sets: { type: Type.NUMBER, description: "Количество подходов или интервалов" },
+                                  tip: { type: Type.STRING, description: "Подсказка или техника выполнения" },
+                                  isCardio: { type: Type.BOOLEAN, description: "Является ли упражнение кардио" },
+                                  fields: { 
+                                    type: Type.ARRAY, 
+                                    items: { type: Type.STRING },
+                                    description: "Поля для ввода данных (например, ['мин', 'км', 'пульс'])"
+                                  }
+                                },
+                                required: ["name", "scheme", "sets"]
                               }
-                            },
-                            required: ["name", "subtitle", "exercises"]
-                          }
+                            }
+                          },
+                          required: ["name", "subtitle", "exercises"]
                         }
-                      },
-                      required: ["days"]
-                    }
-                  },
-                  required: ["newData"]
-                }
-              }, {
-                name: "update_tech_data",
-                description: "Обновить данные во вкладке 'Техника'. Принимает полный массив элементов техники.",
-                parameters: {
-                  type: Type.OBJECT,
-                  properties: {
-                    newItems: {
-                      type: Type.ARRAY,
-                      description: "Новый массив элементов техники.",
-                      items: {
-                        type: Type.OBJECT,
-                        properties: {
-                          title: { type: Type.STRING, description: "Заголовок (название упражнения)" },
-                          subtitle: { type: Type.STRING, description: "Подзаголовок (например, группа мышц)" },
-                          content: { type: Type.STRING, description: "Текст техники выполнения (можно использовать переносы строк)" }
-                        },
-                        required: ["title", "subtitle", "content"]
                       }
+                    },
+                    required: ["days"]
+                  }
+                },
+                required: ["newData"]
+              }
+            }, {
+              name: "update_tech_data",
+              description: "Обновить данные во вкладке 'Техника'. Принимает полный массив элементов техники.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  newItems: {
+                    type: Type.ARRAY,
+                    description: "Новый массив элементов техники.",
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        title: { type: Type.STRING, description: "Заголовок (название упражнения)" },
+                        subtitle: { type: Type.STRING, description: "Подзаголовок (например, группа мышц)" },
+                        content: { type: Type.STRING, description: "Текст техники выполнения (можно использовать переносы строк)" }
+                      },
+                      required: ["title", "subtitle", "content"]
                     }
-                  },
-                  required: ["newItems"]
-                }
-              }, {
-                name: "add_bioimpedance_measurement",
-                description: "Добавить новые замеры тела и биоимпеданса. Используй этот инструмент, когда пользователь присылает скриншот с весов или просит записать новые замеры.",
-                parameters: {
-                  type: Type.OBJECT,
-                  properties: {
-                    date: { type: Type.STRING, description: "Дата замера в формате YYYY-MM-DD" },
-                    weight: { type: Type.NUMBER, description: "Вес в кг" },
-                    age: { type: Type.NUMBER, description: "Возраст" },
-                    fat: { type: Type.NUMBER, description: "Процент жира (%)" },
-                    muscle: { type: Type.NUMBER, description: "Мышечная масса (кг)" },
-                    water: { type: Type.NUMBER, description: "Содержание воды (%)" },
-                    bmi: { type: Type.NUMBER, description: "ИМТ (Индекс массы тела)" },
-                    visceralFat: { type: Type.NUMBER, description: "Висцеральный жир" },
-                    skeletalMuscleIndex: { type: Type.NUMBER, description: "Индекс скелетной мускулатуры" },
-                    waistHipRatio: { type: Type.NUMBER, description: "Соотношение талия/бедра" },
-                    bodyType: { type: Type.STRING, description: "Тип телосложения" },
-                    bodyShape: { type: Type.STRING, description: "Форма тела" },
-                    bmr: { type: Type.NUMBER, description: "Базальный метаболизм (BMR / УБМ)" },
-                    boneMass: { type: Type.NUMBER, description: "Костная масса" },
-                    protein: { type: Type.NUMBER, description: "Белок (%)" },
-                    fatFreeMass: { type: Type.NUMBER, description: "Масса тела без жира" },
-                    biologicalAge: { type: Type.NUMBER, description: "Биологический возраст" },
-                    heartRate: { type: Type.NUMBER, description: "Пульс (ЧСС)" },
-                    chest: { type: Type.NUMBER, description: "Грудь (см)" },
-                    waist: { type: Type.NUMBER, description: "Талия (см)" },
-                    waistHigh: { type: Type.NUMBER, description: "Талия (высоко) (см)" },
-                    waistNavel: { type: Type.NUMBER, description: "Талия (по пупку) (см)" },
-                    waistWidest: { type: Type.NUMBER, description: "Талия (широкая часть) (см)" },
-                    hips: { type: Type.NUMBER, description: "Бедра (см)" },
-                    bicep: { type: Type.NUMBER, description: "Бицепс (см)" },
-                    thigh: { type: Type.NUMBER, description: "Бедро (см)" }
-                  },
-                  required: ["date", "weight"]
-                }
-              }]
+                  }
+                },
+                required: ["newItems"]
+              }
+            }, {
+              name: "add_bioimpedance_measurement",
+              description: "Добавить новые замеры тела и биоимпеданса. Используй этот инструмент, когда пользователь присылает скриншот с весов или просит записать новые замеры.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  date: { type: Type.STRING, description: "Дата замера в формате YYYY-MM-DD" },
+                  weight: { type: Type.NUMBER, description: "Вес в кг" },
+                  age: { type: Type.NUMBER, description: "Возраст" },
+                  fat: { type: Type.NUMBER, description: "Процент жира (%)" },
+                  muscle: { type: Type.NUMBER, description: "Мышечная масса (кг)" },
+                  water: { type: Type.NUMBER, description: "Содержание воды (%)" },
+                  bmi: { type: Type.NUMBER, description: "ИМТ (Индекс массы тела)" },
+                  visceralFat: { type: Type.NUMBER, description: "Висцеральный жир" },
+                  skeletalMuscleIndex: { type: Type.NUMBER, description: "Индекс скелетной мускулатуры" },
+                  waistHipRatio: { type: Type.NUMBER, description: "Соотношение талия/бедра" },
+                  bodyType: { type: Type.STRING, description: "Тип телосложения" },
+                  bodyShape: { type: Type.STRING, description: "Форма тела" },
+                  bmr: { type: Type.NUMBER, description: "Базальный метаболизм (BMR / УБМ)" },
+                  boneMass: { type: Type.NUMBER, description: "Костная масса" },
+                  protein: { type: Type.NUMBER, description: "Белок (%)" },
+                  fatFreeMass: { type: Type.NUMBER, description: "Масса тела без жира" },
+                  biologicalAge: { type: Type.NUMBER, description: "Биологический возраст" },
+                  heartRate: { type: Type.NUMBER, description: "Пульс (ЧСС)" },
+                  chest: { type: Type.NUMBER, description: "Грудь (см)" },
+                  waist: { type: Type.NUMBER, description: "Талия (см)" },
+                  waistHigh: { type: Type.NUMBER, description: "Талия (высоко) (см)" },
+                  waistNavel: { type: Type.NUMBER, description: "Талия (по пупку) (см)" },
+                  waistWidest: { type: Type.NUMBER, description: "Талия (широкая часть) (см)" },
+                  hips: { type: Type.NUMBER, description: "Бедра (см)" },
+                  bicep: { type: Type.NUMBER, description: "Бицепс (см)" },
+                  thigh: { type: Type.NUMBER, description: "Бедро (см)" }
+                },
+                required: ["date", "weight"]
+              }
             }]
-          }
-        });
-      } catch (safetyErr: any) {
-        const errStr = safetyErr?.message?.toLowerCase() || "";
-        if (errStr.includes("safety") || errStr.includes("blocked") || errStr.includes("candidate")) {
-          console.warn("Safety block triggered, retrying with minimal context...");
-          response = await ai.models.generateContent({
-            model: modelName,
-            contents: [{ 
-              role: 'user', 
-              parts: [{ text: `Пользователь спрашивает: "${textToSend}". Ответь на вопрос пользователя максимально полезно, используя свои знания о фитнесе.` }] 
-            }],
-            config: {
-              safetySettings: [
-                { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-                { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE }
-              ]
-            }
-          });
-        } else {
-          throw safetyErr;
+          }]
         }
-      }
+      });
 
       if (response.functionCalls) {
         for (const call of response.functionCalls) {
@@ -2262,7 +2505,7 @@ function CoachPage({
             if (typeof (window as any).handleUpdateProgramFromCoach === 'function') {
               await (window as any).handleUpdateProgramFromCoach(formattedData);
               
-              const confirmResponse = await ai.models.generateContent({
+              const confirmResponse = await callGeminiWithRetry({
                 model: modelName,
                 contents: [
                   ...contents,
@@ -2294,7 +2537,7 @@ function CoachPage({
             if (typeof (window as any).handleUpdateTechFromCoach === 'function') {
               await (window as any).handleUpdateTechFromCoach(newItems);
               
-              const confirmResponse = await ai.models.generateContent({
+              const confirmResponse = await callGeminiWithRetry({
                 model: modelName,
                 contents: [
                   ...contents,
@@ -2326,7 +2569,7 @@ function CoachPage({
             if (typeof (window as any).handleSaveWeightFromCoach === 'function') {
               await (window as any).handleSaveWeightFromCoach(measurementData);
               
-              const confirmResponse = await ai.models.generateContent({
+              const confirmResponse = await callGeminiWithRetry({
                 model: modelName,
                 contents: [
                   ...contents,
@@ -2367,8 +2610,8 @@ function CoachPage({
         errorMessage = "Ошибка: API ключ не найден или недействителен. Пожалуйста, проверьте настройки. 🧘‍♀️";
       } else if (error?.message?.toLowerCase().includes("safety") || error?.message?.toLowerCase().includes("blocked")) {
         errorMessage = "Извини, запрос был заблокирован фильтрами безопасности. Попробуй перефразировать вопрос. 🧘‍♀️";
-      } else if (error?.message?.includes("quota") || error?.message?.includes("429")) {
-        errorMessage = "Превышен лимит запросов к ИИ. Пожалуйста, подождите немного и попробуйте снова. 🧘‍♀️";
+      } else if (error?.message?.toLowerCase().includes("quota") || error?.message?.toLowerCase().includes("429") || error?.message?.toLowerCase().includes("rate exceeded")) {
+        errorMessage = "Превышен лимит запросов к ИИ (Rate Limit). Пожалуйста, подождите немного и попробуйте снова. 🧘‍♀️";
       } else if (error?.message?.includes("500") || error?.message?.includes("503")) {
         errorMessage = "Сервер ИИ временно недоступен. Попробуйте еще раз через минуту. 🧘‍♀️";
       } else {
@@ -2431,12 +2674,12 @@ function CoachPage({
       initial={{ opacity: 0 }} 
       animate={{ opacity: 1 }} 
       exit={{ opacity: 0 }} 
-      className="flex flex-col h-[600px] max-h-[70vh] md:h-[calc(100vh-280px)]"
+      className="flex flex-col h-[calc(100dvh-160px)]"
     >
-      <div className="bg-white p-6 rounded-[32px] border border-border shadow-sm mb-4 flex items-center justify-between">
+      <div className="bg-surface p-6 rounded-[32px] border border-border shadow-sm mb-4 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-accent/10 rounded-2xl flex items-center justify-center text-accent">
-            <Dumbbell size={28} />
+          <div className="w-10 h-10 bg-accent/10 rounded-2xl flex items-center justify-center text-accent">
+            <Bot size={20} />
           </div>
           <div>
             <h2 className="text-lg font-display font-bold text-accent">FitTrack-Pro ИИ</h2>
@@ -2460,7 +2703,7 @@ function CoachPage({
               <Trash2 size={16} />
             </button>
             {showClearConfirm && (
-              <div className="absolute right-0 top-full mt-2 w-48 bg-white border border-border rounded-xl shadow-xl p-3 z-50">
+              <div className="absolute right-0 top-full mt-2 w-48 bg-surface border border-border rounded-xl shadow-xl p-3 z-50">
                 <p className="text-[10px] font-bold mb-2">Очистить историю чата?</p>
                 <div className="flex gap-2">
                   <button onClick={handleClearChat} className="flex-1 py-1 bg-red-500 text-white text-[10px] rounded-lg">Да</button>
@@ -2478,7 +2721,7 @@ function CoachPage({
               <Settings size={16} />
             </button>
             {showApiKeySettings && (
-              <div className="absolute right-0 top-full mt-2 w-72 bg-white border border-border rounded-2xl shadow-xl p-5 z-50 animate-in fade-in slide-in-from-top-2">
+              <div className="absolute right-0 top-full mt-2 w-72 bg-surface border border-border rounded-2xl shadow-xl p-5 z-50 animate-in fade-in slide-in-from-top-2">
                 <h4 className="text-xs font-bold text-text mb-2 uppercase tracking-wider">Настройки Gemini API</h4>
                 <p className="text-[10px] text-muted mb-4">Если ИИ не работает, вставьте свой ключ API. Его можно получить бесплатно на <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-accent underline">AI Studio</a>.</p>
                 <input 
@@ -2547,7 +2790,7 @@ function CoachPage({
               <div className={`max-w-[85%] p-4 rounded-3xl text-sm leading-relaxed shadow-sm ${
                 m.role === 'user' 
                   ? 'bg-accent text-white rounded-tr-none' 
-                  : 'bg-white border border-border text-text rounded-tl-none'
+                  : 'bg-surface border border-border text-text rounded-tl-none'
               }`}>
                 {m.images && m.images.length > 0 && (
                   <div className="grid grid-cols-2 gap-2 mb-3">
@@ -2579,7 +2822,7 @@ function CoachPage({
             animate={{ opacity: 1 }}
             className="flex justify-start"
           >
-            <div className="bg-white border border-border p-4 rounded-3xl rounded-tl-none flex gap-1">
+            <div className="bg-surface border border-border p-4 rounded-3xl rounded-tl-none flex gap-1">
               <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 1 }} className="w-1.5 h-1.5 bg-accent rounded-full" />
               <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 1, delay: 0.2 }} className="w-1.5 h-1.5 bg-accent rounded-full" />
               <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 1, delay: 0.4 }} className="w-1.5 h-1.5 bg-accent rounded-full" />
@@ -2628,7 +2871,7 @@ function CoachPage({
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Спроси тренера или прикрепи фото..."
-              className="w-full py-4 pl-24 pr-16 bg-white border-2 border-border rounded-2xl focus:border-accent focus:outline-none transition-all shadow-sm font-medium"
+              className="w-full py-4 pl-24 pr-16 bg-surface border-2 border-border rounded-2xl focus:border-accent focus:outline-none transition-all shadow-sm font-medium"
             />
           )}
           <button 
@@ -2671,196 +2914,274 @@ function ProfilePage({
   profile, 
   onUpdate, 
   onLogout,
-  measurements,
-  onSaveWeight,
-  onDeleteWeight,
-  onUpdateWeight,
+  setActiveTab,
   onExportData,
   onImportData,
-  setNotification
+  theme,
+  setTheme
 }: { 
   profile: UserProfile | null; 
   onUpdate: (data: any) => Promise<void>; 
   onLogout: () => void;
-  measurements: WeightMeasurement[];
-  onSaveWeight: (data: any) => void;
-  onDeleteWeight: (id: string) => void;
-  onUpdateWeight: (id: string, data: any) => void;
+  setActiveTab: (tab: any) => void;
   onExportData: () => void;
   onImportData: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  setNotification: (n: any) => void;
+  theme: 'light' | 'dark';
+  setTheme: (theme: 'light' | 'dark') => void;
 }) {
   const [name, setName] = useState(profile?.displayName || '');
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-  const profileFileInputRef = useRef<HTMLInputElement>(null);
+  const [age, setAge] = useState(profile?.age?.toString() || '');
+  const [goal, setGoal] = useState(profile?.goal || '');
+  const [isConfirmOpen, setIsConfirmOpen] = useState<{ type: 'delete' | 'logout' | 'export' | 'import' | null; action: () => void }>({ type: null, action: () => {} });
+  const backupFileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (profile?.displayName !== undefined) {
-      setName(profile.displayName);
-    }
-  }, [profile?.displayName]);
-
-  const handleProfileImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setIsSaving(true);
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-          const max = 400; // Profile pics can be smaller
-          if (width > height) {
-            if (width > max) {
-              height *= max / width;
-              width = max;
-            }
-          } else {
-            if (height > max) {
-              width *= max / height;
-              height = max;
-            }
-          }
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx?.drawImage(img, 0, 0, width, height);
-          onUpdate({ photoURL: canvas.toDataURL('image/jpeg', 0.8) }).finally(() => {
-            setIsSaving(false);
-            setSaveSuccess(true);
-            setTimeout(() => setSaveSuccess(false), 3000);
-          });
-        };
-        img.src = event.target?.result as string;
-      };
-      reader.readAsDataURL(file);
-    }
+  const openConfirm = (type: 'delete' | 'logout' | 'export' | 'import', action: () => void) => {
+    setIsConfirmOpen({ type, action });
   };
 
-  const handleSaveName = async () => {
-    if (!name.trim()) {
-      setNotification({
-        show: true,
-        title: 'Внимание',
-        message: 'Пожалуйста, введи своё имя'
-      });
-      return;
-    }
-    setIsSaving(true);
+  const closeConfirm = () => {
+    setIsConfirmOpen({ type: null, action: () => {} });
+  };
+
+  const handleDeleteAllData = async () => {
     try {
-      await onUpdate({ displayName: name });
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
+      if (!auth.currentUser) return;
+      const userId = auth.currentUser.uid;
+      
+      // Delete user document
+      await deleteDoc(doc(db, 'users', userId));
+      
+      // Delete current_workout document
+      await deleteDoc(doc(db, 'current_workout', userId));
+      
+      // Delete programs document
+      await deleteDoc(doc(db, 'programs', userId));
+      
+      // Delete workouts
+      const workoutsQuery = query(collection(db, 'workouts'), where('userId', '==', userId));
+      const workoutsSnapshot = await getDocs(workoutsQuery);
+      const batch = writeBatch(db);
+      workoutsSnapshot.forEach((doc) => {
+        batch.delete(doc.ref);
+      });
+      
+      // Delete measurements
+      const measurementsQuery = query(collection(db, 'measurements'), where('userId', '==', userId));
+      const measurementsSnapshot = await getDocs(measurementsQuery);
+      measurementsSnapshot.forEach((doc) => {
+        batch.delete(doc.ref);
+      });
+      
+      // Delete strength records
+      const strengthQuery = query(collection(db, 'strength'), where('userId', '==', userId));
+      const strengthSnapshot = await getDocs(strengthQuery);
+      strengthSnapshot.forEach((doc) => {
+        batch.delete(doc.ref);
+      });
+      
+      // Delete tech items
+      const techQuery = query(collection(db, 'tech'), where('userId', '==', userId));
+      const techSnapshot = await getDocs(techQuery);
+      techSnapshot.forEach((doc) => {
+        batch.delete(doc.ref);
+      });
+      
+      await batch.commit();
+      
+      console.log("All data deleted successfully.");
+      onLogout(); // Logout after successful deletion
+    } catch (error) {
+      console.error("Error deleting all data:", error);
+      // Handle error (e.g., show notification)
     } finally {
-      setIsSaving(false);
+      closeConfirm();
+    }
+  };
+  
+  const handleSaveProfile = async () => {
+    try {
+      await onUpdate({
+        displayName: name,
+        age: age ? Number(age) : null,
+        goal: goal
+      });
+    } catch (error) {
+      console.error("Error saving profile:", error);
     }
   };
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} className="space-y-8 pb-12">
-      <div className="bg-white p-8 rounded-[40px] border border-border shadow-sm text-center relative">
-        <div 
-          onClick={() => profileFileInputRef.current?.click()}
-          className="group w-24 h-24 bg-accent/10 rounded-[32px] flex items-center justify-center text-accent mx-auto mb-6 overflow-hidden border-2 border-accent/20 cursor-pointer relative"
-        >
+      <div className="flex items-center gap-4 mb-8">
+        <div className="w-16 h-16 bg-accent/10 rounded-3xl flex items-center justify-center text-accent overflow-hidden">
           {profile?.photoURL ? (
-            <img src={profile.photoURL} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+            <img src={profile.photoURL} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
           ) : (
-            <UserIcon size={48} />
+            <UserIcon size={32} />
           )}
-          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
-            <Camera size={20} />
-          </div>
         </div>
-        <input 
-          type="file" 
-          ref={profileFileInputRef}
-          onChange={handleProfileImageUpload}
-          accept="image/*"
-          className="hidden"
-        />
-        <h2 className="text-2xl font-display font-bold text-accent mb-2">Настройки профиля</h2>
-        <p className="text-sm text-muted mb-8">Персонализируй приложение под себя ✨</p>
+        <div>
+          <h2 className="text-2xl font-display font-bold text-text">{profile?.displayName || 'Пользователь'}</h2>
+          <p className="text-xs text-muted font-bold uppercase tracking-widest">{profile?.email}</p>
+        </div>
+      </div>
 
-        <div className="space-y-6 text-left">
-          <div className="space-y-2">
-            <label className="text-[10px] text-muted uppercase font-bold tracking-widest ml-4">Твоё имя</label>
+      <div className="bg-surface border-2 border-border rounded-[32px] p-6 space-y-6 shadow-sm">
+        <h3 className="text-sm font-bold text-accent uppercase tracking-widest">Личные данные</h3>
+        
+        <div className="space-y-4">
+          <div>
+            <label className="block text-[10px] text-muted uppercase font-bold tracking-widest mb-2">Имя</label>
             <input 
               type="text" 
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Как тебя называть?"
-              className="w-full py-4 px-6 bg-surface-2/50 border-2 border-border rounded-2xl focus:border-accent outline-none transition-all font-medium"
+              className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-sm font-bold outline-none focus:border-accent transition-all"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-[10px] text-muted uppercase font-bold tracking-widest mb-2">Возраст</label>
+            <input 
+              type="number" 
+              value={age}
+              onChange={(e) => setAge(e.target.value)}
+              className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-sm font-bold outline-none focus:border-accent transition-all"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] text-muted uppercase font-bold tracking-widest mb-2">Главная цель</label>
+            <input 
+              type="text" 
+              value={goal}
+              onChange={(e) => setGoal(e.target.value)}
+              placeholder="Например: Набрать 5кг мышц"
+              className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-sm font-bold outline-none focus:border-accent transition-all"
             />
           </div>
 
           <button 
-            onClick={handleSaveName}
-            disabled={isSaving}
-            className="w-full py-4 bg-accent text-white font-bold rounded-2xl shadow-lg active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+            onClick={handleSaveProfile}
+            className="w-full py-4 bg-accent text-white font-bold rounded-2xl shadow-lg hover:shadow-xl active:scale-95 transition-all mt-4"
           >
-            {isSaving ? (
-              <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}>
-                <Settings size={20} />
-              </motion.div>
-            ) : (
-              <Save size={20} />
-            )}
-            {isSaving ? 'Сохранение...' : 'Сохранить изменения'}
+            Сохранить изменения
           </button>
-
-          <AnimatePresence>
-            {saveSuccess && (
-              <motion.div 
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                className="text-center text-emerald-500 text-xs font-bold"
-              >
-                ✅ Профиль успешно обновлен!
-              </motion.div>
-            )}
-          </AnimatePresence>
         </div>
       </div>
 
-      <div className="bg-white p-8 rounded-[40px] border border-border shadow-sm">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 bg-accent/10 rounded-xl flex items-center justify-center text-accent">
-            <Scale size={20} />
-          </div>
-          <h3 className="text-xl font-display font-bold text-accent">Твои замеры</h3>
-        </div>
-        
-        <WeightPage 
-          measurements={measurements} 
-          onSave={onSaveWeight} 
-          onDelete={onDeleteWeight}
-          onUpdate={onUpdateWeight}
-          onExportData={onExportData}
-          onImportData={onImportData}
-        />
-      </div>
-
-      <div className="bg-white p-6 rounded-[32px] border border-border shadow-sm">
-        <div className="flex items-center justify-between">
+      <div className="bg-surface border-2 border-border rounded-[32px] p-6 space-y-4">
+        <h3 className="text-sm font-bold text-accent uppercase tracking-widest mb-4">Оформление</h3>
+        <div className="flex items-center justify-between p-4 bg-surface-2 rounded-2xl">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center text-red-500">
-              <LogOut size={20} />
-            </div>
-            <div>
-              <div className="text-sm font-bold text-text">Выйти из аккаунта</div>
-              <div className="text-[10px] text-muted uppercase font-bold tracking-wider">{profile?.email}</div>
-            </div>
+            {theme === 'dark' ? <Moon size={20} className="text-accent" /> : <Sun size={20} className="text-accent" />}
+            <span className="text-sm font-bold text-text">Темная тема</span>
           </div>
           <button 
-            onClick={onLogout}
-            className="px-4 py-2 border-2 border-red-100 text-red-500 text-[10px] font-bold uppercase tracking-wider rounded-xl hover:bg-red-50 transition-all"
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            className={`w-12 h-6 rounded-full transition-colors relative ${theme === 'dark' ? 'bg-accent' : 'bg-border'}`}
           >
-            Выйти
+            <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${theme === 'dark' ? 'translate-x-7' : 'translate-x-1'}`} />
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-accent/5 border-2 border-accent/10 rounded-[32px] p-6 space-y-4 mt-8">
+        <h3 className="text-sm font-bold text-accent uppercase tracking-widest mb-4">Управление данными</h3>
+        <div className="grid grid-cols-2 gap-4">
+          <button onClick={() => openConfirm('export', onExportData)} className="flex flex-col items-center p-6 bg-surface rounded-2xl border border-border hover:border-accent/50 transition-all">
+            <div className="w-12 h-12 bg-accent/10 rounded-full flex items-center justify-center text-accent mb-3"><Download size={24} /></div>
+            <span className="text-xs font-bold uppercase">Экспорт</span>
+          </button>
+          <button onClick={() => openConfirm('import', () => backupFileInputRef.current?.click())} className="flex flex-col items-center p-6 bg-surface rounded-2xl border border-border hover:border-accent/50 transition-all">
+            <div className="w-12 h-12 bg-accent/10 rounded-full flex items-center justify-center text-accent mb-3"><Upload size={24} /></div>
+            <span className="text-xs font-bold uppercase">Импорт</span>
+          </button>
+          <input 
+            type="file" 
+            ref={backupFileInputRef}
+            onChange={(e) => {
+              onImportData(e);
+              closeConfirm();
+            }} 
+            accept=".json" 
+            className="hidden" 
+          />
+        </div>
+        
+        <div className="pt-4 border-t border-border/50">
+          <button onClick={() => openConfirm('logout', onLogout)} className="w-full flex items-center justify-between p-4 bg-surface rounded-2xl border border-border hover:border-accent/50 transition-all text-text">
+            <span className="font-bold">Выйти из аккаунта</span>
+            <LogOut size={20} className="text-muted" />
+          </button>
+        </div>
+
+        <div className="pt-4 border-t border-border/50">
+          <button onClick={() => openConfirm('delete', handleDeleteAllData)} className="w-full flex items-center justify-between p-4 bg-red-500/10 rounded-2xl border border-red-500/20 hover:bg-red-500/20 transition-all text-red-500">
+            <span className="font-bold">Удалить все данные</span>
+            <Trash2 size={20} />
+          </button>
+        </div>
+      </div>
+      {isConfirmOpen.type && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="bg-surface p-6 rounded-3xl border border-border shadow-2xl w-full max-w-sm">
+            <h3 className="text-lg font-bold text-text mb-2">
+              {isConfirmOpen.type === 'delete' ? 'Удалить все данные?' : isConfirmOpen.type === 'logout' ? 'Выйти из аккаунта?' : isConfirmOpen.type === 'export' ? 'Экспортировать данные?' : 'Импортировать данные?'}
+            </h3>
+            <p className="text-sm text-muted mb-6">
+              {isConfirmOpen.type === 'delete' ? 'Это действие нельзя отменить. Все твои тренировки и замеры будут удалены навсегда.' : isConfirmOpen.type === 'logout' ? 'Ты сможешь войти снова в любое время.' : isConfirmOpen.type === 'export' ? 'Будет создан файл с твоими данными.' : 'Это может перезаписать текущие данные.'}
+            </p>
+            <div className="flex gap-3">
+              <button onClick={closeConfirm} className="flex-1 py-3 bg-surface-2 text-text font-bold rounded-xl">Отмена</button>
+              <button onClick={isConfirmOpen.action} className={`flex-1 py-3 font-bold rounded-xl ${isConfirmOpen.type === 'delete' ? 'bg-red-500 text-white' : 'bg-accent text-white'}`}>
+                {isConfirmOpen.type === 'delete' ? 'Удалить' : isConfirmOpen.type === 'logout' ? 'Выйти' : isConfirmOpen.type === 'export' ? 'Экспорт' : 'Импорт'}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+      {/* ... rest of the content ... */}
+      
+      {/* Update the data management section */}
+      <div className="bg-accent/5 border-2 border-accent/10 rounded-[32px] p-6 space-y-4 mt-8">
+        <h3 className="text-sm font-bold text-accent uppercase tracking-widest mb-4">Управление данными</h3>
+        <div className="grid grid-cols-2 gap-4">
+          <button onClick={() => openConfirm('export', onExportData)} className="flex flex-col items-center p-6 bg-surface rounded-2xl border border-border hover:border-accent/50 transition-all">
+            <div className="w-12 h-12 bg-accent/10 rounded-full flex items-center justify-center text-accent mb-3"><Download size={24} /></div>
+            <span className="text-xs font-bold uppercase">Экспорт</span>
+          </button>
+          <button onClick={() => openConfirm('import', () => backupFileInputRef.current?.click())} className="flex flex-col items-center p-6 bg-surface rounded-2xl border border-border hover:border-accent/50 transition-all">
+            <div className="w-12 h-12 bg-accent/10 rounded-full flex items-center justify-center text-accent mb-3"><Upload size={24} /></div>
+            <span className="text-xs font-bold uppercase">Импорт</span>
+          </button>
+          <input 
+            type="file" 
+            ref={backupFileInputRef}
+            onChange={onImportData}
+            accept=".json"
+            className="hidden"
+          />
+        </div>
+      </div>
+
+      {/* Update the dangerous zone section */}
+      <div className="bg-surface p-6 rounded-[32px] border border-border shadow-sm">
+        <h3 className="text-sm font-bold text-red-500 uppercase tracking-widest mb-4">Опасная зона</h3>
+        <div className="space-y-2">
+          <button onClick={() => openConfirm('delete', handleDeleteAllData)} className="w-full flex items-center justify-between p-4 bg-surface-2/50 rounded-2xl hover:bg-red-50 transition-all group">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center text-red-500"><RotateCcw size={20} /></div>
+              <span className="text-sm font-bold text-text group-hover:text-red-600">Сбросить все данные</span>
+            </div>
+            <ChevronRight size={20} className="text-muted" />
+          </button>
+          <button onClick={() => openConfirm('logout', onLogout)} className="w-full flex items-center justify-between p-4 bg-surface-2/50 rounded-2xl hover:bg-accent/5 transition-all group">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-surface rounded-xl flex items-center justify-center text-text"><LogOut size={20} /></div>
+              <span className="text-sm font-bold text-text">Выйти из аккаунта</span>
+            </div>
+            <ChevronRight size={20} className="text-muted" />
           </button>
         </div>
       </div>
@@ -2872,7 +3193,7 @@ function NavTab({ active, onClick, label }: { active: boolean; onClick: () => vo
     <button 
       onClick={onClick}
       className={`flex-1 min-w-[90px] py-2.5 px-2 rounded-xl text-[10px] uppercase font-bold tracking-wider transition-all shadow-sm ${
-        active ? 'bg-accent text-white border-accent' : 'bg-white text-muted border-border hover:border-accent/30'
+        active ? 'bg-accent text-white border-accent' : 'bg-surface text-muted border-border hover:border-accent/30'
       } border`}
     >
       {label}
@@ -2909,7 +3230,7 @@ function TodayPage({
   
   if (Object.keys(programData).length === 0) {
     return (
-      <div className="text-center py-20 bg-white rounded-[40px] border border-border shadow-sm">
+      <div className="text-center py-20 bg-surface rounded-[40px] border border-border shadow-sm">
         <AlertTriangle className="mx-auto mb-4 text-accent" size={48} />
         <p className="text-sm font-bold text-text mb-4">Программа пуста</p>
         <button 
@@ -2924,7 +3245,7 @@ function TodayPage({
 
   if (!program) {
     return (
-      <div className="text-center py-20 bg-white rounded-[40px] border border-border shadow-sm">
+      <div className="text-center py-20 bg-surface rounded-[40px] border border-border shadow-sm">
         <AlertCircle className="mx-auto mb-4 text-red-500" size={32} />
         <p className="text-sm font-bold text-text mb-4">День не найден в программе</p>
         <button onClick={() => setCurrentDay(Object.keys(programData)[0])} className="px-6 py-3 bg-accent text-white rounded-2xl text-xs font-bold uppercase tracking-widest">
@@ -2943,7 +3264,15 @@ function TodayPage({
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
       <div className="flex items-center justify-between mb-2">
-        <h2 className="text-lg font-display font-bold text-accent">Твой план</h2>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-accent/10 rounded-2xl flex items-center justify-center text-accent">
+            <Dumbbell size={20} />
+          </div>
+          <div>
+            <h2 className="text-lg font-display font-bold text-accent">Твой план</h2>
+            <p className="text-[10px] text-muted uppercase font-bold tracking-widest">Тренировка на сегодня</p>
+          </div>
+        </div>
         <div className="flex gap-2">
           <button 
             onClick={onEditProgram}
@@ -2961,7 +3290,7 @@ function TodayPage({
             key={day}
             onClick={() => setCurrentDay(day)}
             className={`flex-shrink-0 px-5 py-3 border rounded-2xl text-[11px] font-bold transition-all shadow-sm ${
-              currentDay === day ? 'bg-accent text-white border-accent' : 'bg-white border-border text-muted hover:border-accent/30'
+              currentDay === day ? 'bg-accent text-white border-accent' : 'bg-surface border-border text-muted hover:border-accent/30'
             }`}
           >
             {day}<br/>
@@ -2970,7 +3299,7 @@ function TodayPage({
         ))}
       </div>
 
-      <div className="space-y-3 bg-white p-5 rounded-3xl border border-border shadow-sm">
+      <div className="space-y-3 bg-surface p-5 rounded-3xl border border-border shadow-sm">
         <div className="flex justify-between text-[10px] text-muted uppercase font-bold tracking-wider">
           <span>{program.isCardio ? '🏃 ' : '💪 '}{program.subtitle}</span>
           <span className="text-accent">{done}/{total}</span>
@@ -3059,7 +3388,7 @@ function ExerciseCard({ exercise, index, isCardioDay, isChecked, onCheck, sets, 
   const isCardio = exercise.isCardio || isCardioDay;
 
   return (
-    <div className={`bg-white border-2 rounded-3xl overflow-hidden transition-all shadow-sm ${isChecked ? 'border-done bg-done/5' : 'border-border'}`}>
+    <div className={`bg-surface border-2 rounded-3xl overflow-hidden transition-all shadow-sm ${isChecked ? 'border-done bg-done/5' : 'border-border'}`}>
       <div className="p-4 flex items-center gap-4 cursor-pointer" onClick={() => setIsOpen(!isOpen)}>
         <div className={`font-display text-2xl w-8 h-8 rounded-xl flex items-center justify-center font-bold ${isChecked ? 'bg-done text-white' : 'bg-surface-2 text-muted'}`}>
           {index + 1}
@@ -3074,7 +3403,7 @@ function ExerciseCard({ exercise, index, isCardioDay, isChecked, onCheck, sets, 
         </div>
         <button 
           onClick={(e) => { e.stopPropagation(); onCheck(); }}
-          className={`w-9 h-9 border-2 rounded-2xl flex items-center justify-center transition-all ${isChecked ? 'bg-done border-done text-white shadow-lg' : 'border-border text-transparent bg-white hover:border-accent/30'}`}
+          className={`w-9 h-9 border-2 rounded-2xl flex items-center justify-center transition-all ${isChecked ? 'bg-done border-done text-white shadow-lg' : 'border-border text-transparent bg-surface hover:border-accent/30'}`}
         >
           {isChecked ? <CheckCircle2 size={20} /> : <div className="w-2 h-2 rounded-full bg-border" />}
         </button>
@@ -3089,13 +3418,13 @@ function ExerciseCard({ exercise, index, isCardioDay, isChecked, onCheck, sets, 
                   <div className="text-[9px] text-muted uppercase font-bold mb-2">Сет {sIdx + 1}</div>
                   <div className="flex items-center justify-center gap-2">
                     {isCardio ? (
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 justify-center">
                         {(exercise.fields || ["мин", "км", "пульс"]).map((f: string, fi: number) => (
                           <div key={fi} className="flex flex-col items-center">
                             <input 
                               type="number" 
                               step="any"
-                              className="w-12 bg-white border-2 border-border text-center text-sm p-2 rounded-xl focus:border-accent outline-none transition-all"
+                              className="w-14 bg-surface border-2 border-border text-center text-sm p-2 rounded-xl focus:border-accent outline-none transition-all font-bold"
                               value={sets[sIdx]?.[fi] || ''}
                               onChange={(e) => onUpdateSet(sIdx, fi, e.target.value)}
                             />
@@ -3104,28 +3433,34 @@ function ExerciseCard({ exercise, index, isCardioDay, isChecked, onCheck, sets, 
                         ))}
                       </div>
                     ) : (
-                      <>
-                        <input 
-                          type="number" 
-                          className="w-12 bg-white border-2 border-border text-center text-sm p-2 rounded-xl focus:border-accent outline-none transition-all"
-                          placeholder={exercise.bodyweight ? "раз" : "кг"}
-                          value={sets[sIdx]?.[0] || ''}
-                          onChange={(e) => onUpdateSet(sIdx, 0, e.target.value)}
-                        />
+                      <div className="flex items-center justify-center gap-1">
+                        <div className="flex flex-col items-center">
+                          <input 
+                            type="number" 
+                            className="w-14 bg-surface border-2 border-border text-center text-sm p-2 rounded-xl focus:border-accent outline-none transition-all font-bold"
+                            placeholder={exercise.bodyweight ? "раз" : "кг"}
+                            value={sets[sIdx]?.[0] || ''}
+                            onChange={(e) => onUpdateSet(sIdx, 0, e.target.value)}
+                          />
+                          <span className="text-[8px] text-muted font-bold mt-1 uppercase">{exercise.bodyweight ? 'раз' : 'кг'}</span>
+                        </div>
+                        
                         {!exercise.bodyweight && (
                           <>
-                            <span className="text-accent font-bold text-sm">×</span>
-                            <input 
-                              type="number" 
-                              className="w-12 bg-white border-2 border-border text-center text-sm p-2 rounded-xl focus:border-accent outline-none transition-all"
-                              placeholder="раз"
-                              value={sets[sIdx]?.[1] || ''}
-                              onChange={(e) => onUpdateSet(sIdx, 1, e.target.value)}
-                            />
+                            <span className="text-accent font-bold text-sm mb-5">×</span>
+                            <div className="flex flex-col items-center">
+                              <input 
+                                type="number" 
+                                className="w-14 bg-surface border-2 border-border text-center text-sm p-2 rounded-xl focus:border-accent outline-none transition-all font-bold"
+                                placeholder="раз"
+                                value={sets[sIdx]?.[1] || ''}
+                                onChange={(e) => onUpdateSet(sIdx, 1, e.target.value)}
+                              />
+                              <span className="text-[8px] text-muted font-bold mt-1 uppercase">раз</span>
+                            </div>
                           </>
                         )}
-                        <span className="text-muted font-bold text-[10px] ml-1 uppercase">{exercise.unit || (exercise.bodyweight ? 'раз' : 'кг')}</span>
-                      </>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -3173,12 +3508,26 @@ function ProgressPage({ workouts, onDelete, onUpdate, programData }: { workouts:
 
   const handleSaveEdit = () => {
     if (!editingId) return;
-    onUpdate(editingId, { date: new Date(editDate).toISOString(), day: editDay });
+    try {
+      const d = new Date(editDate);
+      if (!isNaN(d.getTime())) {
+        onUpdate(editingId, { date: d.toISOString(), day: editDay });
+      }
+    } catch (e) {}
     setEditingId(null);
   };
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-8">
+      <div className="flex items-center gap-3 mb-2">
+        <div className="w-10 h-10 bg-accent/10 rounded-2xl flex items-center justify-center text-accent">
+          <BarChart3 size={20} />
+        </div>
+        <div>
+          <h3 className="text-lg font-display font-bold text-accent">Прогресс</h3>
+          <p className="text-[10px] text-muted uppercase font-bold tracking-widest">Твои достижения</p>
+        </div>
+      </div>
       <div className="grid grid-cols-3 gap-2">
         <StatItem value={stats.total} label="тренировок" />
         <StatItem value={stats.thisMonth} label="в этом месяце" />
@@ -3188,7 +3537,7 @@ function ProgressPage({ workouts, onDelete, onUpdate, programData }: { workouts:
       <div className="space-y-6">
         <h3 className="font-display text-2xl text-accent font-bold">История тренировок</h3>
         {workouts.length === 0 ? (
-          <div className="text-center py-16 bg-white rounded-3xl border-2 border-dashed border-border text-muted text-sm font-medium">
+          <div className="text-center py-16 bg-surface rounded-3xl border-2 border-dashed border-border text-muted text-sm font-medium">
             Пока нет завершённых тренировок. <br/>Пора это исправить! 💪
           </div>
         ) : (
@@ -3201,7 +3550,7 @@ function ProgressPage({ workouts, onDelete, onUpdate, programData }: { workouts:
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 20 }}
                   layout
-                  className="bg-white border-2 border-border rounded-3xl p-5 shadow-sm hover:border-accent/30 transition-all"
+                  className="bg-surface border-2 border-border rounded-3xl p-5 shadow-sm hover:border-accent/30 transition-all"
                 >
                   {editingId === w.id ? (
                   <div className="space-y-4">
@@ -3265,7 +3614,7 @@ function ProgressPage({ workouts, onDelete, onUpdate, programData }: { workouts:
 
 function StatItem({ value, label }: { value: number; label: string }) {
   return (
-    <div className="bg-white border-2 border-border rounded-3xl p-5 text-center shadow-sm">
+    <div className="bg-surface border-2 border-border rounded-3xl p-5 text-center shadow-sm">
       <div className="font-display text-4xl text-accent font-bold leading-none mb-2">{value}</div>
       <div className="text-[10px] text-muted uppercase font-bold tracking-wider">{label}</div>
     </div>
@@ -3310,7 +3659,16 @@ function StrengthPage({ records, onSave, onDelete, onUpdate, programData }: { re
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-8">
-      <div className="bg-white border-2 border-border rounded-[32px] p-6 space-y-6 shadow-sm">
+      <div className="flex items-center gap-3 mb-2">
+        <div className="w-10 h-10 bg-accent/10 rounded-2xl flex items-center justify-center text-accent">
+          <Scale size={20} />
+        </div>
+        <div>
+          <h3 className="text-lg font-display font-bold text-accent">Силовые</h3>
+          <p className="text-[10px] text-muted uppercase font-bold tracking-widest">История весов</p>
+        </div>
+      </div>
+      <div className="bg-surface border-2 border-border rounded-[32px] p-6 space-y-6 shadow-sm">
         <h3 className="font-display text-2xl text-accent font-bold">Записать вес</h3>
         <div className="space-y-4">
           <select 
@@ -3358,7 +3716,7 @@ function StrengthPage({ records, onSave, onDelete, onUpdate, programData }: { re
       <div className="space-y-6">
         <h3 className="font-display text-2xl text-accent font-bold">Мои веса</h3>
         {Object.keys(byExercise).length === 0 ? (
-          <div className="text-center py-16 bg-white rounded-3xl border-2 border-dashed border-border text-muted text-sm font-medium">Нет записей. Фиксируй веса после тренировки! 🏋️‍♀️</div>
+          <div className="text-center py-16 bg-surface rounded-3xl border-2 border-dashed border-border text-muted text-sm font-medium">Нет записей. Фиксируй веса после тренировки! 🏋️‍♀️</div>
         ) : (
           <div className="space-y-4">
             <AnimatePresence initial={false}>
@@ -3375,7 +3733,7 @@ function StrengthPage({ records, onSave, onDelete, onUpdate, programData }: { re
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.95 }}
                     layout
-                    className="bg-white border-2 border-border rounded-3xl p-6 space-y-4 shadow-sm"
+                    className="bg-surface border-2 border-border rounded-3xl p-6 space-y-4 shadow-sm"
                   >
                     <div className="flex justify-between items-start">
                     <div className="text-[14px] font-bold text-text flex-1">{name}</div>
@@ -3461,16 +3819,12 @@ function WeightPage({
   measurements, 
   onSave,
   onDelete,
-  onUpdate,
-  onExportData,
-  onImportData
+  onUpdate
 }: { 
   measurements: WeightMeasurement[]; 
   onSave: (data: any) => void;
   onDelete: (id: string) => void;
   onUpdate: (id: string, data: any) => void;
-  onExportData: () => void;
-  onImportData: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }) {
   const [weight, setWeight] = useState('');
   const [age, setAge] = useState('');
@@ -3527,6 +3881,7 @@ function WeightPage({
   const [editHips, setEditHips] = useState('');
   const [editThigh, setEditThigh] = useState('');
   const [editBicep, setEditBicep] = useState('');
+  const [isAddingNew, setIsAddingNew] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -3587,6 +3942,7 @@ function WeightPage({
     setThigh('');
     setDate(new Date().toISOString().split('T')[0]);
     setSaveSuccess(true);
+    setIsAddingNew(false);
     setTimeout(() => setSaveSuccess(false), 3000);
   };
 
@@ -3654,122 +4010,174 @@ function WeightPage({
   };
 
   return (
-    <div className="space-y-8">
-      <div className="space-y-6">
-        <h4 className="text-[10px] text-muted uppercase font-bold tracking-widest">Новый замер</h4>
-        
-        <div className="grid grid-cols-1 gap-4">
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }} 
+      animate={{ opacity: 1, y: 0 }} 
+      exit={{ opacity: 0, y: -20 }} 
+      className="space-y-6"
+    >
+      <div className="bg-surface p-8 rounded-[40px] border border-border shadow-sm">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 bg-accent/10 rounded-2xl flex items-center justify-center text-accent">
+            <Scale size={20} />
+          </div>
           <div>
-            <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Дата замера</label>
-            <input 
-              type="date" 
-              className="w-full bg-surface-2 border-2 border-border text-text p-3 rounded-xl text-sm font-bold outline-none focus:border-accent transition-all"
-              value={date || ''}
-              onChange={(e) => setDate(e.target.value)}
-            />
+            <h3 className="text-lg font-display font-bold text-accent">Замеры</h3>
+            <p className="text-[10px] text-muted uppercase font-bold tracking-widest">Антропометрия и биоимпеданс</p>
           </div>
         </div>
+        
+        <div className="space-y-8">
+          <AnimatePresence mode="wait">
+            {!isAddingNew ? (
+              <motion.button 
+                key="add-button"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                onClick={() => setIsAddingNew(true)}
+                className="w-full py-6 border-2 border-dashed border-border rounded-[32px] flex flex-col items-center justify-center gap-3 text-muted hover:border-accent hover:text-accent hover:bg-accent/5 transition-all group"
+              >
+                <div className="w-12 h-12 bg-surface-2 rounded-2xl flex items-center justify-center group-hover:bg-accent/10 transition-colors">
+                  <Plus size={24} className="group-hover:scale-110 transition-transform" />
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-widest">Добавить новый замер</span>
+              </motion.button>
+            ) : (
+              <motion.div 
+                key="form"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="overflow-hidden"
+              >
+                <div className="space-y-6 pt-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-[10px] text-muted uppercase font-bold tracking-widest">Новый замер</h4>
+                    <button 
+                      onClick={() => setIsAddingNew(false)}
+                      className="p-2 text-muted hover:text-accent transition-colors"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 gap-4">
+                    <div>
+                      <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Дата замера</label>
+                      <input 
+                        type="date" 
+                        className="w-full bg-surface-2 border-2 border-border text-text p-3 rounded-xl text-sm font-bold outline-none focus:border-accent transition-all"
+                        value={date || ''}
+                        onChange={(e) => setDate(e.target.value)}
+                      />
+                    </div>
+                  </div>
 
-        <div className="space-y-4">
-          <h5 className="text-[10px] text-accent uppercase font-bold tracking-widest border-b border-border pb-1">Основные</h5>
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Вес (кг)</label>
-              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={weight || ''} onChange={(e) => setWeight(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Возраст</label>
-              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={age || ''} onChange={(e) => setAge(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">ИМТ</label>
-              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={bmi || ''} onChange={(e) => setBmi(e.target.value)} />
-            </div>
-          </div>
-        </div>
+                  <div className="space-y-4">
+                    <h5 className="text-[10px] text-accent uppercase font-bold tracking-widest border-b border-border pb-1">Основные</h5>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Вес (кг)</label>
+                        <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={weight || ''} onChange={(e) => setWeight(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Возраст</label>
+                        <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={age || ''} onChange={(e) => setAge(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">ИМТ</label>
+                        <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={bmi || ''} onChange={(e) => setBmi(e.target.value)} />
+                      </div>
+                    </div>
+                  </div>
 
-        <div className="space-y-4">
-          <h5 className="text-[10px] text-accent uppercase font-bold tracking-widest border-b border-border pb-1">Биоимпеданс</h5>
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Жир %</label>
-              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={fat || ''} onChange={(e) => setFat(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Мышцы кг</label>
-              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={muscle || ''} onChange={(e) => setMuscle(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Вода %</label>
-              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={water || ''} onChange={(e) => setWater(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Висц. жир</label>
-              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={visceralFat || ''} onChange={(e) => setVisceralFat(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Кости (кг)</label>
-              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={boneMass || ''} onChange={(e) => setBoneMass(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Белок %</label>
-              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={protein || ''} onChange={(e) => setProtein(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">BMR (ккал)</label>
-              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={bmr || ''} onChange={(e) => setBmr(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Биол. возр.</label>
-              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={biologicalAge || ''} onChange={(e) => setBiologicalAge(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Пульс</label>
-              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={heartRate || ''} onChange={(e) => setHeartRate(e.target.value)} />
-            </div>
-          </div>
-        </div>
+                  <div className="space-y-4">
+                    <h5 className="text-[10px] text-accent uppercase font-bold tracking-widest border-b border-border pb-1">Биоимпеданс</h5>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Жир %</label>
+                        <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={fat || ''} onChange={(e) => setFat(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Мышцы кг</label>
+                        <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={muscle || ''} onChange={(e) => setMuscle(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Вода %</label>
+                        <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={water || ''} onChange={(e) => setWater(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Висц. жир</label>
+                        <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={visceralFat || ''} onChange={(e) => setVisceralFat(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Кости (кг)</label>
+                        <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={boneMass || ''} onChange={(e) => setBoneMass(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Белок %</label>
+                        <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={protein || ''} onChange={(e) => setProtein(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">BMR (ккал)</label>
+                        <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={bmr || ''} onChange={(e) => setBmr(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Биол. возр.</label>
+                        <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={biologicalAge || ''} onChange={(e) => setBiologicalAge(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Пульс</label>
+                        <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={heartRate || ''} onChange={(e) => setHeartRate(e.target.value)} />
+                      </div>
+                    </div>
+                  </div>
 
-        <div className="space-y-4">
-          <h5 className="text-[10px] text-accent uppercase font-bold tracking-widest border-b border-border pb-1">Объемы</h5>
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Грудь (см)</label>
-              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={chest || ''} onChange={(e) => setChest(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Талия выс.</label>
-              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={waistHigh || ''} onChange={(e) => setWaistHigh(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Талия пупок</label>
-              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={waistNavel || ''} onChange={(e) => setWaistNavel(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Талия шир.</label>
-              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={waistWidest || ''} onChange={(e) => setWaistWidest(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Бёдра (см)</label>
-              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={hips || ''} onChange={(e) => setHips(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Бедро (см)</label>
-              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={thigh || ''} onChange={(e) => setThigh(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Бицепс (см)</label>
-              <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={bicep || ''} onChange={(e) => setBicep(e.target.value)} />
-            </div>
-          </div>
-        </div>
+                  <div className="space-y-4">
+                    <h5 className="text-[10px] text-accent uppercase font-bold tracking-widest border-b border-border pb-1">Объемы</h5>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Грудь (см)</label>
+                        <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={chest || ''} onChange={(e) => setChest(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Талия выс.</label>
+                        <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={waistHigh || ''} onChange={(e) => setWaistHigh(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Талия пупок</label>
+                        <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={waistNavel || ''} onChange={(e) => setWaistNavel(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Талия шир.</label>
+                        <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={waistWidest || ''} onChange={(e) => setWaistWidest(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Бёдра (см)</label>
+                        <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={hips || ''} onChange={(e) => setHips(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Бедро (см)</label>
+                        <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={thigh || ''} onChange={(e) => setThigh(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Бицепс (см)</label>
+                        <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={bicep || ''} onChange={(e) => setBicep(e.target.value)} />
+                      </div>
+                    </div>
+                  </div>
 
-        <button 
-          onClick={handleSave}
-          className="w-full py-4 bg-accent hover:bg-accent-2 text-white font-bold text-sm uppercase tracking-widest rounded-2xl shadow-lg transition-all active:scale-95"
-        >
-          Сохранить замер
-        </button>
+                  <button 
+                    onClick={handleSave}
+                    className="w-full py-4 bg-accent hover:bg-accent-2 text-white font-bold text-sm uppercase tracking-widest rounded-2xl shadow-lg transition-all active:scale-95"
+                  >
+                    Сохранить замер
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
         <AnimatePresence>
           {saveSuccess && (
@@ -3785,40 +4193,10 @@ function WeightPage({
         </AnimatePresence>
       </div>
 
-      <div className="bg-accent/5 border-2 border-accent/10 rounded-[32px] p-6 space-y-4">
-        <div className="flex justify-between items-center">
-          <div>
-            <h4 className="text-[11px] text-accent uppercase font-bold tracking-widest">Резервное копирование</h4>
-            <p className="text-[9px] text-muted font-medium mt-1 uppercase">Экспорт и импорт всех данных (тренировки, замеры, веса)</p>
-          </div>
-          <div className="flex gap-2">
-            <button 
-              onClick={onExportData}
-              className="text-[10px] bg-white text-accent border-2 border-accent/20 px-4 py-2 rounded-xl hover:bg-accent/5 transition-all font-bold uppercase tracking-tight shadow-sm"
-            >
-              Экспорт
-            </button>
-            <button 
-              onClick={() => fileInputRef.current?.click()}
-              className="text-[10px] bg-white text-accent border-2 border-accent/20 px-4 py-2 rounded-xl hover:bg-accent/5 transition-all font-bold uppercase tracking-tight shadow-sm"
-            >
-              Импорт
-            </button>
-            <input 
-              type="file" 
-              ref={fileInputRef}
-              onChange={onImportData}
-              className="hidden"
-              accept=".json"
-            />
-          </div>
-        </div>
-      </div>
-
       <div className="space-y-6">
         <h4 className="text-[10px] text-muted uppercase font-bold tracking-widest px-1">История замеров</h4>
         {measurements.length === 0 ? (
-          <div className="text-center py-16 bg-white rounded-3xl border-2 border-dashed border-border text-muted text-sm font-medium">Нет записей. Добавь первый! 📏</div>
+          <div className="text-center py-16 bg-surface rounded-3xl border-2 border-dashed border-border text-muted text-sm font-medium">Нет записей. Добавь первый! 📏</div>
         ) : (
           <div className="space-y-3">
             <AnimatePresence initial={false}>
@@ -3836,22 +4214,22 @@ function WeightPage({
                     <div className="grid grid-cols-3 gap-2">
                       <div className="col-span-3">
                         <label className="text-[9px] text-muted uppercase font-bold ml-1">Дата</label>
-                        <input type="date" value={editDate || ''} onChange={(e) => setEditDate(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
+                        <input type="date" value={editDate || ''} onChange={(e) => setEditDate(e.target.value)} className="w-full bg-surface border border-border p-2 rounded-xl text-xs font-bold" />
                       </div>
                       <div className="col-span-3 border-b border-border pb-1 mt-2">
                         <span className="text-[9px] text-accent uppercase font-bold">Основные</span>
                       </div>
                       <div>
                         <label className="text-[9px] text-muted uppercase font-bold ml-1">Вес</label>
-                        <input type="number" value={editWeight || ''} onChange={(e) => setEditWeight(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
+                        <input type="number" value={editWeight || ''} onChange={(e) => setEditWeight(e.target.value)} className="w-full bg-surface border border-border p-2 rounded-xl text-xs font-bold" />
                       </div>
                       <div>
                         <label className="text-[9px] text-muted uppercase font-bold ml-1">Возраст</label>
-                        <input type="number" value={editAge || ''} onChange={(e) => setEditAge(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
+                        <input type="number" value={editAge || ''} onChange={(e) => setEditAge(e.target.value)} className="w-full bg-surface border border-border p-2 rounded-xl text-xs font-bold" />
                       </div>
                       <div>
                         <label className="text-[9px] text-muted uppercase font-bold ml-1">ИМТ</label>
-                        <input type="number" value={editBmi || ''} onChange={(e) => setEditBmi(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
+                        <input type="number" value={editBmi || ''} onChange={(e) => setEditBmi(e.target.value)} className="w-full bg-surface border border-border p-2 rounded-xl text-xs font-bold" />
                       </div>
 
                       <div className="col-span-3 border-b border-border pb-1 mt-2">
@@ -3859,39 +4237,39 @@ function WeightPage({
                       </div>
                       <div>
                         <label className="text-[9px] text-muted uppercase font-bold ml-1">Жир %</label>
-                        <input type="number" value={editFat || ''} onChange={(e) => setEditFat(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
+                        <input type="number" value={editFat || ''} onChange={(e) => setEditFat(e.target.value)} className="w-full bg-surface border border-border p-2 rounded-xl text-xs font-bold" />
                       </div>
                       <div>
                         <label className="text-[9px] text-muted uppercase font-bold ml-1">Мышцы кг</label>
-                        <input type="number" value={editMuscle || ''} onChange={(e) => setEditMuscle(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
+                        <input type="number" value={editMuscle || ''} onChange={(e) => setEditMuscle(e.target.value)} className="w-full bg-surface border border-border p-2 rounded-xl text-xs font-bold" />
                       </div>
                       <div>
                         <label className="text-[9px] text-muted uppercase font-bold ml-1">Вода %</label>
-                        <input type="number" value={editWater || ''} onChange={(e) => setEditWater(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
+                        <input type="number" value={editWater || ''} onChange={(e) => setEditWater(e.target.value)} className="w-full bg-surface border border-border p-2 rounded-xl text-xs font-bold" />
                       </div>
                       <div>
                         <label className="text-[9px] text-muted uppercase font-bold ml-1">Висц. жир</label>
-                        <input type="number" value={editVisceralFat || ''} onChange={(e) => setEditVisceralFat(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
+                        <input type="number" value={editVisceralFat || ''} onChange={(e) => setEditVisceralFat(e.target.value)} className="w-full bg-surface border border-border p-2 rounded-xl text-xs font-bold" />
                       </div>
                       <div>
                         <label className="text-[9px] text-muted uppercase font-bold ml-1">Кости</label>
-                        <input type="number" value={editBoneMass || ''} onChange={(e) => setEditBoneMass(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
+                        <input type="number" value={editBoneMass || ''} onChange={(e) => setEditBoneMass(e.target.value)} className="w-full bg-surface border border-border p-2 rounded-xl text-xs font-bold" />
                       </div>
                       <div>
                         <label className="text-[9px] text-muted uppercase font-bold ml-1">Белок %</label>
-                        <input type="number" value={editProtein || ''} onChange={(e) => setEditProtein(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
+                        <input type="number" value={editProtein || ''} onChange={(e) => setEditProtein(e.target.value)} className="w-full bg-surface border border-border p-2 rounded-xl text-xs font-bold" />
                       </div>
                       <div>
                         <label className="text-[9px] text-muted uppercase font-bold ml-1">BMR</label>
-                        <input type="number" value={editBmr || ''} onChange={(e) => setEditBmr(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
+                        <input type="number" value={editBmr || ''} onChange={(e) => setEditBmr(e.target.value)} className="w-full bg-surface border border-border p-2 rounded-xl text-xs font-bold" />
                       </div>
                       <div>
                         <label className="text-[9px] text-muted uppercase font-bold ml-1">Биол. возр.</label>
-                        <input type="number" value={editBiologicalAge || ''} onChange={(e) => setEditBiologicalAge(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
+                        <input type="number" value={editBiologicalAge || ''} onChange={(e) => setEditBiologicalAge(e.target.value)} className="w-full bg-surface border border-border p-2 rounded-xl text-xs font-bold" />
                       </div>
                       <div>
                         <label className="text-[9px] text-muted uppercase font-bold ml-1">Пульс</label>
-                        <input type="number" value={editHeartRate || ''} onChange={(e) => setEditHeartRate(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
+                        <input type="number" value={editHeartRate || ''} onChange={(e) => setEditHeartRate(e.target.value)} className="w-full bg-surface border border-border p-2 rounded-xl text-xs font-bold" />
                       </div>
 
                       <div className="col-span-3 border-b border-border pb-1 mt-2">
@@ -3899,31 +4277,31 @@ function WeightPage({
                       </div>
                       <div>
                         <label className="text-[9px] text-muted uppercase font-bold ml-1">Грудь</label>
-                        <input type="number" value={editChest || ''} onChange={(e) => setEditChest(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
+                        <input type="number" value={editChest || ''} onChange={(e) => setEditChest(e.target.value)} className="w-full bg-surface border border-border p-2 rounded-xl text-xs font-bold" />
                       </div>
                       <div>
                         <label className="text-[9px] text-muted uppercase font-bold ml-1">Талия выс</label>
-                        <input type="number" value={editWaistHigh || ''} onChange={(e) => setEditWaistHigh(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
+                        <input type="number" value={editWaistHigh || ''} onChange={(e) => setEditWaistHigh(e.target.value)} className="w-full bg-surface border border-border p-2 rounded-xl text-xs font-bold" />
                       </div>
                       <div>
                         <label className="text-[9px] text-muted uppercase font-bold ml-1">Талия пупок</label>
-                        <input type="number" value={editWaistNavel || ''} onChange={(e) => setEditWaistNavel(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
+                        <input type="number" value={editWaistNavel || ''} onChange={(e) => setEditWaistNavel(e.target.value)} className="w-full bg-surface border border-border p-2 rounded-xl text-xs font-bold" />
                       </div>
                       <div>
                         <label className="text-[9px] text-muted uppercase font-bold ml-1">Талия шир</label>
-                        <input type="number" value={editWaistWidest || ''} onChange={(e) => setEditWaistWidest(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
+                        <input type="number" value={editWaistWidest || ''} onChange={(e) => setEditWaistWidest(e.target.value)} className="w-full bg-surface border border-border p-2 rounded-xl text-xs font-bold" />
                       </div>
                       <div>
                         <label className="text-[9px] text-muted uppercase font-bold ml-1">Бёдра</label>
-                        <input type="number" value={editHips || ''} onChange={(e) => setEditHips(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
+                        <input type="number" value={editHips || ''} onChange={(e) => setEditHips(e.target.value)} className="w-full bg-surface border border-border p-2 rounded-xl text-xs font-bold" />
                       </div>
                       <div>
                         <label className="text-[9px] text-muted uppercase font-bold ml-1">Бедро</label>
-                        <input type="number" value={editThigh || ''} onChange={(e) => setEditThigh(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
+                        <input type="number" value={editThigh || ''} onChange={(e) => setEditThigh(e.target.value)} className="w-full bg-surface border border-border p-2 rounded-xl text-xs font-bold" />
                       </div>
                       <div>
                         <label className="text-[9px] text-muted uppercase font-bold ml-1">Бицепс</label>
-                        <input type="number" value={editBicep || ''} onChange={(e) => setEditBicep(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
+                        <input type="number" value={editBicep || ''} onChange={(e) => setEditBicep(e.target.value)} className="w-full bg-surface border border-border p-2 rounded-xl text-xs font-bold" />
                       </div>
                     </div>
                     <div className="flex gap-2">
@@ -3975,7 +4353,8 @@ function WeightPage({
           </div>
         )}
       </div>
-    </div>
+      </div>
+    </motion.div>
   );
 }
 
@@ -4006,7 +4385,7 @@ function TechPage({ items, onEdit, isLoading }: { items: TechItem[]; onEdit: () 
       </div>
 
       {items.length === 0 ? (
-        <div className="text-center py-20 bg-white rounded-[40px] border border-border shadow-sm">
+        <div className="text-center py-20 bg-surface rounded-[40px] border border-border shadow-sm">
           <BookOpen className="mx-auto mb-4 text-accent/30" size={48} />
           <p className="text-sm font-bold text-text mb-4">Список пуст</p>
           <button 
@@ -4092,7 +4471,7 @@ function TechEditor({ items, onSave, onClose }: { items: TechItem[]; onSave: (it
         animate={{ scale: 1, y: 0 }}
         className="bg-bg w-full max-w-2xl max-h-[90vh] rounded-[40px] shadow-2xl flex flex-col overflow-hidden border border-border"
       >
-        <div className="p-6 border-b border-border flex justify-between items-center bg-white">
+        <div className="p-6 border-b border-border flex justify-between items-center bg-surface">
           <div>
             <h2 className="text-xl font-display font-bold text-accent">Редактор Техники</h2>
             <p className="text-[10px] text-muted uppercase font-bold tracking-widest mt-1">Настрой базу знаний</p>
@@ -4104,7 +4483,7 @@ function TechEditor({ items, onSave, onClose }: { items: TechItem[]; onSave: (it
 
         <div className="flex-1 overflow-y-auto p-6 space-y-6 no-scrollbar">
           {localItems.map((item, idx) => (
-            <div key={idx} className="bg-white p-6 rounded-3xl border border-border shadow-sm space-y-4 relative group">
+            <div key={idx} className="bg-surface p-6 rounded-3xl border border-border shadow-sm space-y-4 relative group">
               <div className="absolute top-4 right-4 flex gap-2">
                 <button onClick={() => moveItem(idx, 'up')} className="p-1 text-muted hover:text-accent"><ChevronUp size={16} /></button>
                 <button onClick={() => moveItem(idx, 'down')} className="p-1 text-muted hover:text-accent"><ChevronDown size={16} /></button>
@@ -4153,7 +4532,7 @@ function TechEditor({ items, onSave, onClose }: { items: TechItem[]; onSave: (it
           </button>
         </div>
 
-        <div className="p-6 border-t border-border bg-white flex gap-3">
+        <div className="p-6 border-t border-border bg-surface flex gap-3">
           <button 
             onClick={onClose}
             className="flex-1 py-4 border-2 border-border text-muted font-bold rounded-2xl hover:bg-surface-2 transition-all"
@@ -4196,7 +4575,7 @@ function TechCard({ title, subtitle, content }: { title: string; subtitle: strin
     .join('\n');
 
   return (
-    <div className="bg-white border-2 border-border border-l-8 border-l-accent rounded-3xl p-6 space-y-3 shadow-sm">
+    <div className="bg-surface border-2 border-border border-l-8 border-l-accent rounded-3xl p-6 space-y-3 shadow-sm">
       <h4 className="font-display text-xl text-accent font-bold">{title}</h4>
       <p className="text-[10px] text-accent-2 uppercase font-bold tracking-widest">{subtitle}</p>
       <div className="text-[12px] text-text leading-relaxed prose prose-sm max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0.5 prose-li:marker:text-accent">
