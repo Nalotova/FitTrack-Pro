@@ -453,15 +453,23 @@ function AppContent() {
 
   // Auth Listener
   useEffect(() => {
+    let timeout: NodeJS.Timeout;
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
+        // Fallback timeout to ensure app loads even if Firestore hangs
+        timeout = setTimeout(() => {
+          setLoading(false);
+        }, 5000);
         await syncUserProfile(currentUser);
       } else {
         setLoading(false);
       }
     });
-    return () => unsubscribe();
+    return () => {
+      if (timeout) clearTimeout(timeout);
+      unsubscribe();
+    };
   }, []);
 
   // Persistence for Today's state
@@ -470,7 +478,9 @@ function AppContent() {
       setIsWorkoutStateLoading(false);
       return;
     }
+    const timeout = setTimeout(() => setIsWorkoutStateLoading(false), 5000);
     const unsub = onSnapshot(doc(db, 'current_workout', user.uid), (snapshot) => {
+      clearTimeout(timeout);
       if (snapshot.exists()) {
         const data = snapshot.data();
         setCurrentDay(prev => prev !== data.currentDay ? (data.currentDay || 'День 1') : prev);
@@ -480,10 +490,14 @@ function AppContent() {
       }
       setIsWorkoutStateLoading(false);
     }, (error) => {
+      clearTimeout(timeout);
       setIsWorkoutStateLoading(false);
       handleFirestoreError(error, OperationType.GET, `current_workout/${user.uid}`);
     });
-    return () => unsub();
+    return () => {
+      clearTimeout(timeout);
+      unsub();
+    };
   }, [user]);
 
   // Sync currentDay with programData
@@ -597,16 +611,27 @@ function AppContent() {
     (window as any).handleUpdateTechFromCoach = handleUpdateTech;
     (window as any).handleUpdateProfileFromCoach = handleUpdateProfile;
     (window as any).handleSaveWeightFromCoach = handleSaveWeight;
+    
+    // Fallback timeout to ensure app loads even if Firestore hangs
+    const timeout = setTimeout(() => {
+      setLoading(false);
+    }, 5000);
+
     const unsubProfile = onSnapshot(doc(db, 'users', user.uid), (snapshot) => {
+      clearTimeout(timeout);
       if (snapshot.exists()) {
         setUserProfile(snapshot.data() as UserProfile);
       }
       setLoading(false);
     }, (error) => {
+      clearTimeout(timeout);
       setLoading(false);
       handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
     });
-    return () => unsubProfile();
+    return () => {
+      clearTimeout(timeout);
+      unsubProfile();
+    };
   }, [user]);
 
   // Program Listener
@@ -614,10 +639,13 @@ function AppContent() {
     if (!user) {
       setProgramData(PROGRAM);
       setIsProgramLoading(false);
+      setIsTechLoading(false);
       return;
     }
 
+    const timeoutProgram = setTimeout(() => setIsProgramLoading(false), 5000);
     const unsubProgram = onSnapshot(doc(db, 'programs', user.uid), (snapshot) => {
+      clearTimeout(timeoutProgram);
       let finalData = PROGRAM;
       if (snapshot.exists()) {
         const snapshotData = snapshot.data();
@@ -653,13 +681,16 @@ function AppContent() {
       setProgramData(finalData);
       setIsProgramLoading(false);
     }, (error) => {
+      clearTimeout(timeoutProgram);
       setIsProgramLoading(false);
       handleFirestoreError(error, OperationType.GET, `programs/${user.uid}`);
     });
 
+    const timeoutTech = setTimeout(() => setIsTechLoading(false), 5000);
     const unsubTech = onSnapshot(
       query(collection(db, 'tech'), where('userId', '==', user.uid)),
       (snapshot) => {
+        clearTimeout(timeoutTech);
         const data = snapshot.docs.map(doc => {
           const d = doc.data();
           // Migration: if points exists but content doesn't, join them
@@ -673,12 +704,15 @@ function AppContent() {
         setIsTechLoading(false);
       },
       (error) => {
+        clearTimeout(timeoutTech);
         setIsTechLoading(false);
         handleFirestoreError(error, OperationType.LIST, 'tech');
       }
     );
 
     return () => {
+      clearTimeout(timeoutProgram);
+      clearTimeout(timeoutTech);
       unsubProgram();
       unsubTech();
     };
@@ -746,13 +780,18 @@ function AppContent() {
         if (!userData.photoURL && currentUser.photoURL) updates.photoURL = currentUser.photoURL;
         // Always ensure email is up to date
         if (userData.email !== currentUser.email) updates.email = currentUser.email || '';
+        
+        // Ensure required fields for isValidUserProfile are present
+        if (!userData.role) updates.role = 'user';
+        if (!userData.createdAt) updates.createdAt = new Date().toISOString();
       }
 
       if (Object.keys(updates).length > 0) {
         await setDoc(userRef, updates, { merge: true });
       }
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `users/${currentUser.uid}`);
+      console.error("Failed to sync user profile:", error);
+      // Don't throw here, let the app continue
     }
   };
 
@@ -2150,7 +2189,7 @@ function CoachPage({
                     weight: { type: Type.NUMBER, description: "Вес в кг" },
                     age: { type: Type.NUMBER, description: "Возраст" },
                     fat: { type: Type.NUMBER, description: "Процент жира (%)" },
-                    muscle: { type: Type.NUMBER, description: "Мышечная масса (%)" },
+                    muscle: { type: Type.NUMBER, description: "Мышечная масса (кг)" },
                     water: { type: Type.NUMBER, description: "Содержание воды (%)" },
                     bmi: { type: Type.NUMBER, description: "ИМТ (Индекс массы тела)" },
                     visceralFat: { type: Type.NUMBER, description: "Висцеральный жир" },
@@ -3653,15 +3692,15 @@ function WeightPage({
           <h5 className="text-[10px] text-accent uppercase font-bold tracking-widest border-b border-border pb-1">Биоимпеданс</h5>
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Жир (%)</label>
+              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Жир %</label>
               <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={fat || ''} onChange={(e) => setFat(e.target.value)} />
             </div>
             <div>
-              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Мышцы (%)</label>
+              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Мышцы кг</label>
               <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={muscle || ''} onChange={(e) => setMuscle(e.target.value)} />
             </div>
             <div>
-              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Вода (%)</label>
+              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Вода %</label>
               <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={water || ''} onChange={(e) => setWater(e.target.value)} />
             </div>
             <div>
@@ -3673,7 +3712,7 @@ function WeightPage({
               <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={boneMass || ''} onChange={(e) => setBoneMass(e.target.value)} />
             </div>
             <div>
-              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Белок (%)</label>
+              <label className="text-[9px] text-muted uppercase font-bold block mb-1 px-1">Белок %</label>
               <input type="number" className="w-full bg-surface-2 border border-border text-text p-2 rounded-lg text-sm font-bold outline-none focus:border-accent transition-all" value={protein || ''} onChange={(e) => setProtein(e.target.value)} />
             </div>
             <div>
@@ -3823,7 +3862,7 @@ function WeightPage({
                         <input type="number" value={editFat || ''} onChange={(e) => setEditFat(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
                       </div>
                       <div>
-                        <label className="text-[9px] text-muted uppercase font-bold ml-1">Мышцы %</label>
+                        <label className="text-[9px] text-muted uppercase font-bold ml-1">Мышцы кг</label>
                         <input type="number" value={editMuscle || ''} onChange={(e) => setEditMuscle(e.target.value)} className="w-full bg-white border border-border p-2 rounded-xl text-xs font-bold" />
                       </div>
                       <div>
@@ -3918,7 +3957,7 @@ function WeightPage({
                     )}
                     <div className="text-[10px] text-muted font-bold uppercase opacity-60 flex flex-wrap gap-x-2">
                       {m.fat && <span>Жир: {m.fat}%</span>}
-                      {m.muscle && <span>Мышцы: {m.muscle}%</span>}
+                      {m.muscle && <span>Мышцы: {m.muscle}кг</span>}
                       {m.water && <span>Вода: {m.water}%</span>}
                       {m.visceralFat && <span>Висц. жир: {m.visceralFat}</span>}
                       {m.bmi && <span>ИМТ: {m.bmi}</span>}
