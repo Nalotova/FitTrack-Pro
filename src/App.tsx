@@ -45,9 +45,7 @@ import {
   Square,
   Trophy,
   Moon,
-  Sun,
-  Trash2,
-  LogOut
+  Sun
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
@@ -163,6 +161,7 @@ interface UserProfile {
   photoURL?: string;
   role: 'user' | 'admin';
   age?: string | number;
+  gender?: 'male' | 'female' | 'other';
   goal?: string;
   reminders?: any[];
   createdAt?: string;
@@ -1486,9 +1485,17 @@ function AppContent() {
               <div className="text-[9px] text-muted uppercase font-semibold tracking-[0.15em] mt-0.5">{weekLabel}</div>
             </div>
           </div>
-          <div className="text-right">
-            <div className="text-2xl font-display font-bold text-accent leading-none">{streakWeeks}</div>
-            <div className="text-[8px] text-muted uppercase font-semibold tracking-[0.15em]">недель подряд</div>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              className="w-10 h-10 rounded-xl bg-surface border border-border flex items-center justify-center text-accent hover:border-accent/50 transition-all"
+            >
+              {theme === 'dark' ? <Moon size={20} /> : <Sun size={20} />}
+            </button>
+            <div className="text-right">
+              <div className="text-2xl font-display font-bold text-accent leading-none">{streakWeeks}</div>
+              <div className="text-[8px] text-muted uppercase font-semibold tracking-[0.15em]">недель подряд</div>
+            </div>
           </div>
         </div>
       </header>
@@ -1595,6 +1602,7 @@ function AppContent() {
               onImportData={handleImportData}
               theme={theme}
               setTheme={setTheme}
+              setCoachMessages={setCoachMessages}
             />
           )}
         </AnimatePresence>
@@ -1686,10 +1694,9 @@ function AppContent() {
       <div className="fixed bottom-0 left-0 right-0 bg-surface border-t border-border pb-safe pt-2 px-2 z-50 flex justify-around items-center shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
         {[
           { id: 'today', label: 'Тренировка', icon: Dumbbell },
-          { id: 'measurements', label: 'Замеры', icon: Scale },
-          { id: 'strength', label: 'Силовые', icon: Trophy },
-          { id: 'progress', label: 'Прогресс', icon: BarChart3 },
           { id: 'coach', label: 'Коуч', icon: Bot },
+          { id: 'measurements', label: 'Замеры', icon: Scale },
+          { id: 'progress', label: 'Прогресс', icon: BarChart3 },
           { id: 'profile', label: 'Профиль', icon: UserIcon },
         ].map(tab => {
           const Icon = tab.icon;
@@ -2105,7 +2112,7 @@ function CoachPage({
   setNotification
 }: any) {
   const [input, setInput] = useState('');
-  const [images, setImages] = useState<string[]>([]);
+  const [attachedFiles, setAttachedFiles] = useState<{data: string, mimeType: string, name: string}[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -2136,49 +2143,22 @@ function CoachPage({
     }
   }, [messages]);
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files) {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         if (file) {
-          // Check size - limit to 1MB for Firestore base64 safety
-          if (file.size > 1024 * 1024) {
-            const reader = new FileReader();
-            reader.onload = (event) => {
-              const img = new Image();
-              img.onload = () => {
-                const canvas = document.createElement('canvas');
-                let width = img.width;
-                let height = img.height;
-                const max = 800;
-                if (width > height) {
-                  if (width > max) {
-                    height *= max / width;
-                    width = max;
-                  }
-                } else {
-                  if (height > max) {
-                    width *= max / height;
-                    height = max;
-                  }
-                }
-                canvas.width = width;
-                canvas.height = height;
-                const ctx = canvas.getContext('2d');
-                ctx?.drawImage(img, 0, 0, width, height);
-                setImages(prev => [...prev, canvas.toDataURL('image/jpeg', 0.7)]);
-              };
-              img.src = event.target?.result as string;
-            };
-            reader.readAsDataURL(file);
-          } else {
-            const reader = new FileReader();
-            reader.onload = (event) => {
-              setImages(prev => [...prev, event.target?.result as string]);
-            };
-            reader.readAsDataURL(file);
-          }
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const base64 = (event.target?.result as string).split(',')[1];
+            setAttachedFiles(prev => [...prev, {
+              data: base64,
+              mimeType: file.type || 'application/octet-stream',
+              name: file.name
+            }]);
+          };
+          reader.readAsDataURL(file);
         }
       }
     }
@@ -2188,24 +2168,30 @@ function CoachPage({
     setMessages([]);
     localStorage.removeItem('coach_messages');
     setInput('');
-    setImages([]);
+    setAttachedFiles([]);
     setShowClearConfirm(false);
   };
 
-  const handleSend = async (customInput?: string, customImages?: string[], audioBlob?: Blob) => {
+  const handleSend = async (customInput?: string, customFiles?: {data: string, mimeType: string, name: string}[], audioBlob?: Blob) => {
     const textToSend = customInput || input;
-    const imagesToSend = customImages || images;
+    const filesToSend = customFiles || attachedFiles;
     
-    if ((!textToSend.trim() && imagesToSend.length === 0 && !audioBlob) || isLoading) return;
+    if ((!textToSend.trim() && filesToSend.length === 0 && !audioBlob) || isLoading) return;
 
     const userMsg: any = { role: 'user', content: textToSend };
-    if (imagesToSend.length > 0) userMsg.images = imagesToSend;
+    if (filesToSend.length > 0) {
+      userMsg.files = filesToSend.map(f => ({
+        data: f.data,
+        mimeType: f.mimeType,
+        name: f.name
+      }));
+    }
     if (audioBlob) userMsg.isAudio = true;
 
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
     setInput('');
-    setImages([]);
+    setAttachedFiles([]);
     setIsLoading(true);
 
     try {
@@ -2224,14 +2210,17 @@ function CoachPage({
       const modelName = "gemini-3-flash-preview";
       
       const systemPrompt = `Ты — профессиональный ИИ-фитнес-тренер. Твой стиль: объективный, конструктивный, лаконичный. Ты анализируешь данные тренировок, замеров и силовых рекордов. Твоя цель — помочь пользователю достичь спортивных результатов безопасно и эффективно.
+ОБЯЗАТЕЛЬНО учитывай пол, возраст и цели пользователя при составлении рекомендаций и ответов.
 Ты можешь:
 1. Обновлять программу тренировок (инструмент update_training_program).
 2. Обновлять технику выполнения упражнений (инструмент update_tech_data).
 3. Добавлять замеры биоимпеданса (инструмент add_bioimpedance_measurement).
-Все данные о теле (замеры, вес) предоставлены исключительно в фитнес-целях.`;
+Все данные о теле (замеры, вес) предоставлены исключительно в фитнес-целях.
+Ты также можешь анализировать прикрепленные изображения, видео и файлы (например, PDF или текстовые документы с результатами анализов или программами).`;
 
       const dataContext = `
         ПЕРЕМЕННЫЕ ПОЛЬЗОВАТЕЛЯ (ДЛЯ АНАЛИЗА):
+        - ПРОФИЛЬ: ${JSON.stringify(userProfile)}
         - ТРЕНИРОВКИ: ${JSON.stringify(workouts.slice(-10))}
         - ЗАМЕРЫ: ${JSON.stringify(measurements.slice(-10))}
         - СИЛОВЫЕ РЕКОРДЫ: ${JSON.stringify(strengthRecords.slice(-20))}
@@ -2285,6 +2274,17 @@ function CoachPage({
         userParts.push({ text: textToSend });
       }
 
+      if (filesToSend.length > 0) {
+        filesToSend.forEach(f => {
+          userParts.push({
+            inlineData: {
+              data: f.data,
+              mimeType: f.mimeType
+            }
+          });
+        });
+      }
+
       if (audioBlob) {
         const reader = new FileReader();
         const base64Promise = new Promise<string>((resolve) => {
@@ -2299,21 +2299,6 @@ function CoachPage({
           inlineData: {
             data: base64Data,
             mimeType: audioBlob.type || "audio/webm"
-          }
-        });
-      }
-
-      if (imagesToSend.length > 0) {
-        imagesToSend.forEach(img => {
-          const parts = img.split(',');
-          if (parts.length > 1) {
-            const mimeType = img.split(';')[0].split(':')[1] || "image/jpeg";
-            userParts.push({
-              inlineData: {
-                data: parts[1],
-                mimeType: mimeType
-              }
-            });
           }
         });
       }
@@ -2334,13 +2319,14 @@ function CoachPage({
             parts.push({ text: m.content });
           }
           
-          if (m.images && m.images.length > 0) {
-            m.images.forEach((img: string) => {
-              const imgParts = img.split(',');
-              if (imgParts.length > 1) {
-                const mimeType = img.split(';')[0].split(':')[1] || "image/jpeg";
-                parts.push({ inlineData: { data: imgParts[1], mimeType: mimeType } });
-              }
+          if (m.files && m.files.length > 0) {
+            m.files.forEach((f: any) => {
+              parts.push({
+                inlineData: {
+                  data: f.data,
+                  mimeType: f.mimeType
+                }
+              });
             });
           }
           
@@ -2676,31 +2662,31 @@ function CoachPage({
       exit={{ opacity: 0 }} 
       className="flex flex-col h-[calc(100dvh-160px)]"
     >
-      <div className="bg-surface p-6 rounded-[32px] border border-border shadow-sm mb-4 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-4">
-          <div className="w-10 h-10 bg-accent/10 rounded-2xl flex items-center justify-center text-accent">
-            <Bot size={20} />
+      <div className="bg-surface p-3 rounded-2xl border border-border shadow-sm mb-3 flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 bg-accent/10 rounded-xl flex items-center justify-center text-accent">
+            <Bot size={18} />
           </div>
           <div>
-            <h2 className="text-lg font-display font-bold text-accent">FitTrack-Pro ИИ</h2>
-            <p className="text-[10px] text-muted uppercase font-bold tracking-widest">Персональные советы и мотивация</p>
+            <h2 className="text-sm font-display font-bold text-accent leading-tight">FitTrack-Pro ИИ</h2>
+            <p className="text-[8px] text-muted uppercase font-bold tracking-widest">Персональный коуч</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <button 
             onClick={() => handleSend("Проанализируй мой прогресс за последнее время")}
-            className="px-4 py-2 bg-accent/5 hover:bg-accent/10 text-accent text-[10px] font-bold uppercase tracking-wider rounded-xl border border-accent/20 transition-all flex items-center gap-2"
+            className="px-2.5 py-1.5 bg-accent/5 hover:bg-accent/10 text-accent text-[8px] font-bold uppercase tracking-wider rounded-lg border border-accent/10 transition-all flex items-center gap-1.5"
           >
-            <TrendingUp size={14} />
+            <TrendingUp size={10} />
             Анализ
           </button>
           <div className="relative">
             <button 
               onClick={() => setShowClearConfirm(true)}
-              className="p-2 bg-red-50 text-red-500 border border-red-100 rounded-xl hover:bg-red-100 transition-all"
+              className="p-1.5 bg-red-50 text-red-500 border border-red-100 rounded-lg hover:bg-red-100 transition-all"
               title="Очистить чат"
             >
-              <Trash2 size={16} />
+              <Trash2 size={12} />
             </button>
             {showClearConfirm && (
               <div className="absolute right-0 top-full mt-2 w-48 bg-surface border border-border rounded-xl shadow-xl p-3 z-50">
@@ -2715,10 +2701,10 @@ function CoachPage({
           <div className="relative">
             <button 
               onClick={() => setShowApiKeySettings(!showApiKeySettings)}
-              className={`p-2 rounded-xl border transition-all ${manualApiKey ? 'bg-accent/10 text-accent border-accent/20' : 'bg-surface-2 text-muted border-border'}`}
+              className={`p-1.5 rounded-lg border transition-all ${manualApiKey ? 'bg-accent/10 text-accent border-accent/20' : 'bg-surface-2 text-muted border-border'}`}
               title="Настройки API"
             >
-              <Settings size={16} />
+              <Settings size={12} />
             </button>
             {showApiKeySettings && (
               <div className="absolute right-0 top-full mt-2 w-72 bg-surface border border-border rounded-2xl shadow-xl p-5 z-50 animate-in fade-in slide-in-from-top-2">
@@ -2799,6 +2785,26 @@ function CoachPage({
                     ))}
                   </div>
                 )}
+                {m.files && (
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    {m.files.map((f: any, fIdx: number) => (
+                      <div key={fIdx} className="bg-white/10 p-2 rounded-xl border border-white/20 flex items-center gap-2 overflow-hidden">
+                        {f.mimeType.startsWith('image/') ? (
+                          <img src={`data:${f.mimeType};base64,${f.data}`} alt="Attached" className="w-10 h-10 object-cover rounded-lg" />
+                        ) : f.mimeType.startsWith('video/') ? (
+                          <div className="w-10 h-10 bg-accent/20 rounded-lg flex items-center justify-center text-accent">
+                            <Camera size={16} />
+                          </div>
+                        ) : (
+                          <div className="w-10 h-10 bg-surface rounded-lg flex items-center justify-center text-muted">
+                            <BookOpen size={16} />
+                          </div>
+                        )}
+                        <span className="text-[10px] font-bold truncate flex-1">{f.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {m.isAudio && (
                   <div className="flex items-center gap-2 mb-2 text-white/80 bg-white/10 p-2 rounded-xl">
                     <Mic size={16} />
@@ -2838,14 +2844,21 @@ function CoachPage({
         }}
         className="space-y-3"
       >
-        {images.length > 0 && (
+        {attachedFiles.length > 0 && (
           <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-            {images.map((img, idx) => (
+            {attachedFiles.map((f, idx) => (
               <div key={idx} className="relative flex-shrink-0">
-                <img src={img} alt="Preview" className="h-20 w-20 object-cover rounded-2xl border-2 border-accent shadow-lg" />
+                {f.mimeType.startsWith('image/') ? (
+                  <img src={`data:${f.mimeType};base64,${f.data}`} alt="Preview" className="h-20 w-20 object-cover rounded-2xl border-2 border-accent shadow-lg" />
+                ) : (
+                  <div className="h-20 w-20 bg-surface border-2 border-accent rounded-2xl flex flex-col items-center justify-center p-2 shadow-lg">
+                    {f.mimeType.startsWith('video/') ? <Camera size={24} className="text-accent" /> : <BookOpen size={24} className="text-accent" />}
+                    <span className="text-[8px] font-bold truncate w-full text-center mt-1">{f.name}</span>
+                  </div>
+                )}
                 <button 
                   type="button"
-                  onClick={() => setImages(prev => prev.filter((_, i) => i !== idx))}
+                  onClick={() => setAttachedFiles(prev => prev.filter((_, i) => i !== idx))}
                   className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md"
                 >
                   <X size={12} />
@@ -2857,52 +2870,52 @@ function CoachPage({
         
         <div className="relative">
           {isRecording ? (
-            <div className="w-full py-4 pl-24 pr-16 bg-red-50 border-2 border-red-200 rounded-2xl flex items-center shadow-sm">
+            <div className="w-full py-3 pl-20 pr-14 bg-red-50 border-2 border-red-200 rounded-xl flex items-center shadow-sm">
               <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse mr-2"></div>
-              <span className="text-red-500 font-bold font-mono">
+              <span className="text-red-500 font-bold font-mono text-sm">
                 {Math.floor(recordingTime / 60).toString().padStart(2, '0')}:
                 {(recordingTime % 60).toString().padStart(2, '0')}
               </span>
-              <span className="ml-2 text-red-400 text-xs uppercase tracking-widest font-bold">Запись...</span>
+              <span className="ml-2 text-red-400 text-[10px] uppercase tracking-widest font-bold">Запись...</span>
             </div>
           ) : (
             <input 
               type="text" 
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Спроси тренера или прикрепи фото..."
-              className="w-full py-4 pl-24 pr-16 bg-surface border-2 border-border rounded-2xl focus:border-accent focus:outline-none transition-all shadow-sm font-medium"
+              placeholder="Спроси тренера или прикрепи файлы..."
+              className="w-full py-3.5 pl-20 pr-14 bg-surface border-2 border-border rounded-xl focus:border-accent focus:outline-none transition-all shadow-sm font-medium text-sm"
             />
           )}
           <button 
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="absolute left-4 top-1/2 -translate-y-1/2 text-muted hover:text-accent transition-all"
+            className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted hover:text-accent transition-all"
           >
-            <Camera size={24} />
+            <PlusCircle size={20} />
           </button>
           <button 
             type="button"
             onClick={isRecording ? stopRecording : startRecording}
-            className={`absolute left-14 top-1/2 -translate-y-1/2 transition-all ${isRecording ? 'text-red-500 animate-pulse' : 'text-muted hover:text-accent'}`}
+            className={`absolute left-11 top-1/2 -translate-y-1/2 transition-all ${isRecording ? 'text-red-500 animate-pulse' : 'text-muted hover:text-accent'}`}
             title={isRecording ? "Остановить запись" : "Записать голосовое"}
           >
-            {isRecording ? <Square size={20} fill="currentColor" /> : <Mic size={24} />}
+            {isRecording ? <Square size={18} fill="currentColor" /> : <Mic size={20} />}
           </button>
           <input 
             type="file" 
             ref={fileInputRef}
-            onChange={handleImageUpload}
-            accept="image/*"
+            onChange={handleFileUpload}
+            accept="image/*,video/*,application/pdf,text/plain"
             multiple
             className="hidden"
           />
           <button 
             type="submit"
-            disabled={isLoading || (!input.trim() && images.length === 0)}
-            className="absolute right-2 top-2 bottom-2 px-4 bg-accent text-white rounded-xl shadow-lg active:scale-95 disabled:opacity-50 transition-all"
+            disabled={isLoading || (!input.trim() && attachedFiles.length === 0)}
+            className="absolute right-1.5 top-1.5 bottom-1.5 px-3 bg-accent text-white rounded-lg shadow-lg active:scale-95 disabled:opacity-50 transition-all"
           >
-            <MessageSquare size={20} />
+            <MessageSquare size={18} />
           </button>
         </div>
       </form>
@@ -2918,7 +2931,8 @@ function ProfilePage({
   onExportData,
   onImportData,
   theme,
-  setTheme
+  setTheme,
+  setCoachMessages
 }: { 
   profile: UserProfile | null; 
   onUpdate: (data: any) => Promise<void>; 
@@ -2928,9 +2942,11 @@ function ProfilePage({
   onImportData: (e: React.ChangeEvent<HTMLInputElement>) => void;
   theme: 'light' | 'dark';
   setTheme: (theme: 'light' | 'dark') => void;
+  setCoachMessages: (messages: any[]) => void;
 }) {
   const [name, setName] = useState(profile?.displayName || '');
   const [age, setAge] = useState(profile?.age?.toString() || '');
+  const [gender, setGender] = useState<'male' | 'female' | 'other'>(profile?.gender || 'male');
   const [goal, setGoal] = useState(profile?.goal || '');
   const [isConfirmOpen, setIsConfirmOpen] = useState<{ type: 'delete' | 'logout' | 'export' | 'import' | null; action: () => void }>({ type: null, action: () => {} });
   const backupFileInputRef = useRef<HTMLInputElement>(null);
@@ -2988,6 +3004,10 @@ function ProfilePage({
       
       await batch.commit();
       
+      // Clear local storage (chat history)
+      localStorage.removeItem('coach_messages');
+      setCoachMessages([]);
+      
       console.log("All data deleted successfully.");
       onLogout(); // Logout after successful deletion
     } catch (error) {
@@ -3003,6 +3023,7 @@ function ProfilePage({
       await onUpdate({
         displayName: name,
         age: age ? Number(age) : null,
+        gender: gender,
         goal: goal
       });
     } catch (error) {
@@ -3031,33 +3052,56 @@ function ProfilePage({
         
         <div className="space-y-4">
           <div>
-            <label className="block text-[10px] text-muted uppercase font-bold tracking-widest mb-2">Имя</label>
+            <label className="block text-[10px] text-muted uppercase font-bold tracking-widest mb-1 ml-1">Имя</label>
             <input 
               type="text" 
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-sm font-bold outline-none focus:border-accent transition-all"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-[10px] text-muted uppercase font-bold tracking-widest mb-2">Возраст</label>
-            <input 
-              type="number" 
-              value={age}
-              onChange={(e) => setAge(e.target.value)}
-              className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-sm font-bold outline-none focus:border-accent transition-all"
+              className="w-full bg-surface-2 border-2 border-border text-text p-2.5 rounded-xl text-sm font-bold outline-none focus:border-accent transition-all"
             />
           </div>
 
+          <div className="grid grid-cols-3 gap-3">
+            <div className="col-span-1">
+              <label className="block text-[10px] text-muted uppercase font-bold tracking-widest mb-1 ml-1">Возраст</label>
+              <input 
+                type="number" 
+                value={age}
+                onChange={(e) => setAge(e.target.value)}
+                className="w-full bg-surface-2 border-2 border-border text-text p-2.5 rounded-xl text-sm font-bold outline-none focus:border-accent transition-all"
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-[10px] text-muted uppercase font-bold tracking-widest mb-1 ml-1">Пол</label>
+              <div className="flex gap-4 h-[48px] items-center bg-surface-2 border-2 border-border rounded-xl px-4">
+                {[
+                  { id: 'male', label: 'М' },
+                  { id: 'female', label: 'Ж' },
+                  { id: 'other', label: '?' }
+                ].map((g) => (
+                  <button
+                    key={g.id}
+                    onClick={() => setGender(g.id as any)}
+                    className={`flex items-center gap-2 transition-all ${gender === g.id ? 'text-accent' : 'text-text'}`}
+                  >
+                    <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${gender === g.id ? 'border-accent' : 'border-border'}`}>
+                      {gender === g.id && <div className="w-2 h-2 rounded-full bg-accent" />}
+                    </div>
+                    <span className="text-xs font-bold">{g.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
           <div>
-            <label className="block text-[10px] text-muted uppercase font-bold tracking-widest mb-2">Главная цель</label>
-            <input 
-              type="text" 
+            <label className="block text-[10px] text-muted uppercase font-bold tracking-widest mb-1 ml-1">Главная цель</label>
+            <textarea 
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
-              placeholder="Например: Набрать 5кг мышц"
-              className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-sm font-bold outline-none focus:border-accent transition-all"
+              placeholder="Например: Набрать 5кг мышц.&#10;Улучшить выносливость."
+              rows={3}
+              className="w-full bg-surface-2 border-2 border-border text-text p-3 rounded-xl text-sm font-bold outline-none focus:border-accent transition-all resize-none"
             />
           </div>
 
@@ -3070,59 +3114,64 @@ function ProfilePage({
         </div>
       </div>
 
-      <div className="bg-surface border-2 border-border rounded-[32px] p-6 space-y-4">
-        <h3 className="text-sm font-bold text-accent uppercase tracking-widest mb-4">Оформление</h3>
-        <div className="flex items-center justify-between p-4 bg-surface-2 rounded-2xl">
-          <div className="flex items-center gap-3">
-            {theme === 'dark' ? <Moon size={20} className="text-accent" /> : <Sun size={20} className="text-accent" />}
-            <span className="text-sm font-bold text-text">Темная тема</span>
+      <div className="bg-surface border-2 border-border rounded-[32px] p-4 flex items-center justify-between shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-accent/10 rounded-xl flex items-center justify-center text-accent">
+            {theme === 'dark' ? <Moon size={20} /> : <Sun size={20} />}
           </div>
-          <button 
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className={`w-12 h-6 rounded-full transition-colors relative ${theme === 'dark' ? 'bg-accent' : 'bg-border'}`}
-          >
-            <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${theme === 'dark' ? 'translate-x-7' : 'translate-x-1'}`} />
+          <span className="text-sm font-bold text-text">Темная тема</span>
+        </div>
+        <button 
+          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          className={`w-12 h-6 rounded-full transition-colors relative ${theme === 'dark' ? 'bg-accent' : 'bg-border'}`}
+        >
+          <div className={`w-4 h-4 rounded-full bg-white absolute top-1 transition-transform ${theme === 'dark' ? 'translate-x-7' : 'translate-x-1'}`} />
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <button 
+          onClick={() => setActiveTab('strength')}
+          className="bg-surface border-2 border-border rounded-[32px] p-6 flex flex-col items-center gap-3 hover:border-accent/50 transition-all shadow-sm"
+        >
+          <div className="w-12 h-12 bg-accent/10 rounded-full flex items-center justify-center text-accent">
+            <Trophy size={24} />
+          </div>
+          <span className="text-xs font-bold uppercase tracking-widest">Силовые</span>
+        </button>
+        <button 
+          onClick={() => setActiveTab('tech')}
+          className="bg-surface border-2 border-border rounded-[32px] p-6 flex flex-col items-center gap-3 hover:border-accent/50 transition-all shadow-sm"
+        >
+          <div className="w-12 h-12 bg-accent/10 rounded-full flex items-center justify-center text-accent">
+            <BookOpen size={24} />
+          </div>
+          <span className="text-xs font-bold uppercase tracking-widest">Техника</span>
+        </button>
+      </div>
+
+      <div className="bg-surface p-6 rounded-[32px] border-2 border-red-500/10 shadow-sm">
+        <h3 className="text-sm font-bold text-red-500 uppercase tracking-widest mb-4 flex items-center gap-2">
+          <AlertTriangle size={16} /> Опасная зона
+        </h3>
+        <div className="space-y-2">
+          <button onClick={() => openConfirm('delete', handleDeleteAllData)} className="w-full flex items-center justify-between p-4 bg-red-500/5 rounded-2xl hover:bg-red-500/10 transition-all group border border-red-500/10">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-red-500/10 rounded-xl flex items-center justify-center text-red-500"><RotateCcw size={20} /></div>
+              <span className="text-sm font-bold text-text group-hover:text-red-600">Сбросить все данные</span>
+            </div>
+            <ChevronRight size={20} className="text-muted" />
+          </button>
+          <button onClick={() => openConfirm('logout', onLogout)} className="w-full flex items-center justify-between p-4 bg-surface-2/50 rounded-2xl hover:bg-accent/5 transition-all group border border-border/50">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-surface rounded-xl flex items-center justify-center text-text"><LogOut size={20} /></div>
+              <span className="text-sm font-bold text-text">Выйти из аккаунта</span>
+            </div>
+            <ChevronRight size={20} className="text-muted" />
           </button>
         </div>
       </div>
 
-      <div className="bg-accent/5 border-2 border-accent/10 rounded-[32px] p-6 space-y-4 mt-8">
-        <h3 className="text-sm font-bold text-accent uppercase tracking-widest mb-4">Управление данными</h3>
-        <div className="grid grid-cols-2 gap-4">
-          <button onClick={() => openConfirm('export', onExportData)} className="flex flex-col items-center p-6 bg-surface rounded-2xl border border-border hover:border-accent/50 transition-all">
-            <div className="w-12 h-12 bg-accent/10 rounded-full flex items-center justify-center text-accent mb-3"><Download size={24} /></div>
-            <span className="text-xs font-bold uppercase">Экспорт</span>
-          </button>
-          <button onClick={() => openConfirm('import', () => backupFileInputRef.current?.click())} className="flex flex-col items-center p-6 bg-surface rounded-2xl border border-border hover:border-accent/50 transition-all">
-            <div className="w-12 h-12 bg-accent/10 rounded-full flex items-center justify-center text-accent mb-3"><Upload size={24} /></div>
-            <span className="text-xs font-bold uppercase">Импорт</span>
-          </button>
-          <input 
-            type="file" 
-            ref={backupFileInputRef}
-            onChange={(e) => {
-              onImportData(e);
-              closeConfirm();
-            }} 
-            accept=".json" 
-            className="hidden" 
-          />
-        </div>
-        
-        <div className="pt-4 border-t border-border/50">
-          <button onClick={() => openConfirm('logout', onLogout)} className="w-full flex items-center justify-between p-4 bg-surface rounded-2xl border border-border hover:border-accent/50 transition-all text-text">
-            <span className="font-bold">Выйти из аккаунта</span>
-            <LogOut size={20} className="text-muted" />
-          </button>
-        </div>
-
-        <div className="pt-4 border-t border-border/50">
-          <button onClick={() => openConfirm('delete', handleDeleteAllData)} className="w-full flex items-center justify-between p-4 bg-red-500/10 rounded-2xl border border-red-500/20 hover:bg-red-500/20 transition-all text-red-500">
-            <span className="font-bold">Удалить все данные</span>
-            <Trash2 size={20} />
-          </button>
-        </div>
-      </div>
       {isConfirmOpen.type && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="bg-surface p-6 rounded-3xl border border-border shadow-2xl w-full max-w-sm">
@@ -3141,50 +3190,6 @@ function ProfilePage({
           </motion.div>
         </div>
       )}
-      {/* ... rest of the content ... */}
-      
-      {/* Update the data management section */}
-      <div className="bg-accent/5 border-2 border-accent/10 rounded-[32px] p-6 space-y-4 mt-8">
-        <h3 className="text-sm font-bold text-accent uppercase tracking-widest mb-4">Управление данными</h3>
-        <div className="grid grid-cols-2 gap-4">
-          <button onClick={() => openConfirm('export', onExportData)} className="flex flex-col items-center p-6 bg-surface rounded-2xl border border-border hover:border-accent/50 transition-all">
-            <div className="w-12 h-12 bg-accent/10 rounded-full flex items-center justify-center text-accent mb-3"><Download size={24} /></div>
-            <span className="text-xs font-bold uppercase">Экспорт</span>
-          </button>
-          <button onClick={() => openConfirm('import', () => backupFileInputRef.current?.click())} className="flex flex-col items-center p-6 bg-surface rounded-2xl border border-border hover:border-accent/50 transition-all">
-            <div className="w-12 h-12 bg-accent/10 rounded-full flex items-center justify-center text-accent mb-3"><Upload size={24} /></div>
-            <span className="text-xs font-bold uppercase">Импорт</span>
-          </button>
-          <input 
-            type="file" 
-            ref={backupFileInputRef}
-            onChange={onImportData}
-            accept=".json"
-            className="hidden"
-          />
-        </div>
-      </div>
-
-      {/* Update the dangerous zone section */}
-      <div className="bg-surface p-6 rounded-[32px] border border-border shadow-sm">
-        <h3 className="text-sm font-bold text-red-500 uppercase tracking-widest mb-4">Опасная зона</h3>
-        <div className="space-y-2">
-          <button onClick={() => openConfirm('delete', handleDeleteAllData)} className="w-full flex items-center justify-between p-4 bg-surface-2/50 rounded-2xl hover:bg-red-50 transition-all group">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center text-red-500"><RotateCcw size={20} /></div>
-              <span className="text-sm font-bold text-text group-hover:text-red-600">Сбросить все данные</span>
-            </div>
-            <ChevronRight size={20} className="text-muted" />
-          </button>
-          <button onClick={() => openConfirm('logout', onLogout)} className="w-full flex items-center justify-between p-4 bg-surface-2/50 rounded-2xl hover:bg-accent/5 transition-all group">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-surface rounded-xl flex items-center justify-center text-text"><LogOut size={20} /></div>
-              <span className="text-sm font-bold text-text">Выйти из аккаунта</span>
-            </div>
-            <ChevronRight size={20} className="text-muted" />
-          </button>
-        </div>
-      </div>
     </motion.div>
   );
 }
