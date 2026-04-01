@@ -61,7 +61,7 @@ import {
   AreaChart, 
   Area 
 } from 'recharts';
-import { format, parseISO, subDays, isSameDay, startOfMonth, endOfMonth, differenceInDays, startOfWeek, subWeeks, isWithinInterval, endOfWeek } from 'date-fns';
+import { format, parseISO, subDays, isSameDay, startOfMonth, endOfMonth, differenceInDays, startOfWeek, subWeeks, subMonths, isWithinInterval, endOfWeek } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { 
   auth, 
@@ -1703,6 +1703,25 @@ function AppContent() {
               theme={theme}
               setTheme={setTheme}
               setCoachMessages={setCoachMessages}
+              setNotification={setNotification}
+            />
+          )}
+          {activeTab === 'strength' && (
+            <StrengthPage 
+              records={strengthRecords}
+              onSave={handleSaveStrength}
+              onDelete={handleDeleteStrength}
+              onUpdate={handleUpdateStrength}
+              programData={programData}
+              onBack={() => setActiveTab('profile')}
+            />
+          )}
+          {activeTab === 'tech' && (
+            <TechPage 
+              items={techData}
+              onEdit={() => setShowTechEditor(true)}
+              isLoading={isTechLoading}
+              onBack={() => setActiveTab('profile')}
             />
           )}
         </AnimatePresence>
@@ -1800,7 +1819,7 @@ function AppContent() {
           { id: 'profile', label: 'Профиль', icon: UserIcon },
         ].map(tab => {
           const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
+          const isActive = activeTab === tab.id || (tab.id === 'profile' && (activeTab === 'strength' || activeTab === 'tech'));
           return (
             <button
               key={tab.id}
@@ -3035,7 +3054,8 @@ function ProfilePage({
   onImportData,
   theme,
   setTheme,
-  setCoachMessages
+  setCoachMessages,
+  setNotification
 }: { 
   profile: UserProfile | null; 
   onUpdate: (data: any) => Promise<void>; 
@@ -3046,13 +3066,25 @@ function ProfilePage({
   theme: 'light' | 'dark';
   setTheme: (theme: 'light' | 'dark') => void;
   setCoachMessages: (messages: any[]) => void;
+  setNotification: (notif: any) => void;
 }) {
   const [name, setName] = useState(profile?.displayName || '');
   const [age, setAge] = useState(profile?.age?.toString() || '');
   const [gender, setGender] = useState<'male' | 'female' | 'other'>(profile?.gender || 'male');
   const [goal, setGoal] = useState(profile?.goal || '');
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [isConfirmOpen, setIsConfirmOpen] = useState<{ type: 'delete' | 'logout' | 'export' | 'import' | null; action: () => void }>({ type: null, action: () => {} });
   const backupFileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (profile) {
+      setName(profile.displayName || '');
+      setAge(profile.age?.toString() || '');
+      setGender(profile.gender || 'male');
+      setGoal(profile.goal || '');
+    }
+  }, [profile]);
 
   const openConfirm = (type: 'delete' | 'logout' | 'export' | 'import', action: () => void) => {
     setIsConfirmOpen({ type, action });
@@ -3121,7 +3153,16 @@ function ProfilePage({
     }
   };
   
+  const handleCancel = () => {
+    setName(profile?.displayName || '');
+    setAge(profile?.age?.toString() || '');
+    setGender(profile?.gender || 'male');
+    setGoal(profile?.goal || '');
+    setIsEditing(false);
+  };
+
   const handleSaveProfile = async () => {
+    setIsSaving(true);
     try {
       await onUpdate({
         displayName: name,
@@ -3129,8 +3170,12 @@ function ProfilePage({
         gender: gender,
         goal: goal
       });
+      setNotification({ show: true, title: 'Сохранено', message: 'Профиль обновлён ✓' });
+      setIsEditing(false);
     } catch (error) {
       console.error("Error saving profile:", error);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -3150,71 +3195,122 @@ function ProfilePage({
         </div>
       </div>
 
-      <div className="bg-surface border-2 border-border rounded-[32px] p-6 space-y-6 shadow-sm">
-        <h3 className="text-sm font-bold text-accent uppercase tracking-widest">Личные данные</h3>
+      <div className="bg-surface border-2 border-border rounded-[32px] p-6 space-y-6 shadow-sm relative">
+        <div className="flex justify-between items-center">
+          <h3 className="text-sm font-bold text-accent uppercase tracking-widest">Личные данные</h3>
+          {!isEditing && (
+            <button 
+              onClick={() => setIsEditing(true)}
+              className="absolute top-5 right-5 text-muted hover:text-accent transition-all"
+            >
+              <Edit2 size={16} />
+            </button>
+          )}
+        </div>
         
-        <div className="space-y-4">
-          <div>
-            <label className="block text-[10px] text-muted uppercase font-bold tracking-widest mb-1 ml-1">Имя</label>
-            <input 
-              type="text" 
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full bg-surface-2 border-2 border-border text-text p-2.5 rounded-xl text-sm font-bold outline-none focus:border-accent transition-all"
-            />
-          </div>
-
-          <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-1">
-              <label className="block text-[10px] text-muted uppercase font-bold tracking-widest mb-1 ml-1">Возраст</label>
+        {isEditing ? (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-[10px] text-muted uppercase font-bold tracking-widest mb-1 ml-1">Имя</label>
               <input 
-                type="number" 
-                value={age}
-                onChange={(e) => setAge(e.target.value)}
+                type="text" 
+                value={name}
+                onChange={(e) => setName(e.target.value)}
                 className="w-full bg-surface-2 border-2 border-border text-text p-2.5 rounded-xl text-sm font-bold outline-none focus:border-accent transition-all"
               />
             </div>
-            <div className="col-span-2">
-              <label className="block text-[10px] text-muted uppercase font-bold tracking-widest mb-1 ml-1">Пол</label>
-              <div className="flex gap-4 h-[48px] items-center bg-surface-2 border-2 border-border rounded-xl px-4">
-                {[
-                  { id: 'male', label: 'М' },
-                  { id: 'female', label: 'Ж' },
-                  { id: 'other', label: '?' }
-                ].map((g) => (
-                  <button
-                    key={g.id}
-                    onClick={() => setGender(g.id as any)}
-                    className={`flex items-center gap-2 transition-all ${gender === g.id ? 'text-accent' : 'text-text'}`}
-                  >
-                    <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${gender === g.id ? 'border-accent' : 'border-border'}`}>
-                      {gender === g.id && <div className="w-2 h-2 rounded-full bg-accent" />}
-                    </div>
-                    <span className="text-xs font-bold">{g.label}</span>
-                  </button>
-                ))}
+
+            <div className="grid grid-cols-3 gap-3">
+              <div className="col-span-1">
+                <label className="block text-[10px] text-muted uppercase font-bold tracking-widest mb-1 ml-1">Возраст</label>
+                <input 
+                  type="number" 
+                  value={age}
+                  onChange={(e) => setAge(e.target.value)}
+                  className="w-full bg-surface-2 border-2 border-border text-text p-2.5 rounded-xl text-sm font-bold outline-none focus:border-accent transition-all"
+                />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-[10px] text-muted uppercase font-bold tracking-widest mb-1 ml-1">Пол</label>
+                <div className="flex gap-2">
+                  {[
+                    { id: 'female', label: 'Ж' },
+                    { id: 'male', label: 'М' },
+                    { id: 'other', label: '?' }
+                  ].map((g) => (
+                    <button
+                      key={g.id}
+                      onClick={() => setGender(g.id as any)}
+                      className={`${gender === g.id ? 'bg-accent text-white' : 'bg-surface-2 border-2 border-border text-muted hover:border-accent/50'} rounded-xl px-5 py-2 text-[13px] font-bold transition-all`}
+                    >
+                      {g.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
 
-          <div>
-            <label className="block text-[10px] text-muted uppercase font-bold tracking-widest mb-1 ml-1">Главная цель</label>
-            <textarea 
-              value={goal}
-              onChange={(e) => setGoal(e.target.value)}
-              placeholder="Например: Набрать 5кг мышц.&#10;Улучшить выносливость."
-              rows={3}
-              className="w-full bg-surface-2 border-2 border-border text-text p-3 rounded-xl text-sm font-bold outline-none focus:border-accent transition-all resize-none"
-            />
+            <div>
+              <label className="block text-[10px] text-muted uppercase font-bold tracking-widest mb-1 ml-1">Главная цель</label>
+              <textarea 
+                value={goal}
+                onChange={(e) => setGoal(e.target.value)}
+                placeholder="Например: Набрать 5кг мышц.&#10;Улучшить выносливость."
+                rows={3}
+                className="w-full bg-surface-2 border-2 border-border text-text p-3 rounded-xl text-sm font-bold outline-none focus:border-accent transition-all resize-none"
+              />
+            </div>
           </div>
+        ) : (
+          <div className="space-y-0">
+            <div className="border-b border-border/40 pb-3 mb-3">
+              <div className="text-[9px] text-muted uppercase font-bold tracking-widest mb-0.5">Имя</div>
+              <div className="text-[15px] font-bold text-text">{name || '—'}</div>
+            </div>
 
-          <button 
-            onClick={handleSaveProfile}
-            className="w-full py-4 bg-accent text-white font-bold rounded-2xl shadow-lg hover:shadow-xl active:scale-95 transition-all mt-4"
-          >
-            Сохранить изменения
-          </button>
-        </div>
+            <div className="grid grid-cols-2 gap-4 border-b border-border/40 pb-3 mb-3">
+              <div>
+                <div className="text-[9px] text-muted uppercase font-bold tracking-widest mb-0.5">Возраст</div>
+                <div className="text-[15px] font-bold text-text">{age || '—'}</div>
+              </div>
+              <div>
+                <div className="text-[9px] text-muted uppercase font-bold tracking-widest mb-0.5">Пол</div>
+                <div className="text-[15px] font-bold text-text">
+                  {gender === 'male' ? 'Мужской' : gender === 'female' ? 'Женский' : 'Другой'}
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div className="text-[9px] text-muted uppercase font-bold tracking-widest mb-0.5">Цель</div>
+              <div className="text-[13px] font-medium text-text leading-relaxed">{goal || '—'}</div>
+            </div>
+          </div>
+        )}
+
+        {isEditing && (
+          <div className="flex gap-3 pt-2">
+            <button 
+              onClick={handleCancel}
+              className="flex-1 py-3 border-2 border-border text-muted font-bold rounded-2xl hover:bg-surface-2 transition-all"
+            >
+              Отмена
+            </button>
+            <button 
+              onClick={handleSaveProfile}
+              disabled={isSaving}
+              className="flex-1 py-3 bg-accent text-white font-bold rounded-2xl shadow-lg hover:bg-accent-2 transition-all flex items-center justify-center gap-2"
+            >
+              {isSaving ? (
+                <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}>
+                  <Dumbbell size={20} />
+                </motion.div>
+              ) : (
+                'Сохранить'
+              )}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="bg-surface border-2 border-border rounded-[32px] p-4 flex items-center justify-between shadow-sm">
@@ -3636,6 +3732,26 @@ function ProgressPage({
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
 
+  const [isDropdown1Open, setIsDropdown1Open] = useState(false);
+  const [isDropdown2Open, setIsDropdown2Open] = useState(false);
+  const dropdown1Ref = useRef<HTMLDivElement>(null);
+  const dropdown2Ref = useRef<HTMLDivElement>(null);
+
+  const [activityPeriod, setActivityPeriod] = useState<'8w' | '6m' | 'all'>('8w');
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdown1Ref.current && !dropdown1Ref.current.contains(event.target as Node)) {
+        setIsDropdown1Open(false);
+      }
+      if (dropdown2Ref.current && !dropdown2Ref.current.contains(event.target as Node)) {
+        setIsDropdown2Open(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const handleAnalyze = async () => {
     if (!selectedMeasure1 || !selectedMeasure2) return;
     
@@ -3720,19 +3836,51 @@ function ProgressPage({
   }, [workouts, streakWeeks]);
 
   const activityData = useMemo(() => {
-    const data = [];
     const now = new Date();
-    for (let i = 7; i >= 0; i--) {
-      const weekStart = startOfWeek(subWeeks(now, i), { weekStartsOn: 1 });
-      const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
-      const count = workouts.filter(w => {
-        const d = new Date(w.date);
-        return isWithinInterval(d, { start: weekStart, end: weekEnd });
-      }).length;
-      data.push({ name: `Нед ${8-i}`, count });
+    const data = [];
+
+    if (activityPeriod === '8w') {
+      for (let i = 7; i >= 0; i--) {
+        const weekStart = startOfWeek(subWeeks(now, i), { weekStartsOn: 1 });
+        const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
+        const count = workouts.filter(w => {
+          const d = new Date(w.date);
+          return isWithinInterval(d, { start: weekStart, end: weekEnd });
+        }).length;
+        data.push({ name: `Нед ${8-i}`, count });
+      }
+    } else if (activityPeriod === '6m') {
+      for (let i = 5; i >= 0; i--) {
+        const monthStart = startOfMonth(subMonths(now, i));
+        const monthEnd = endOfMonth(monthStart);
+        const count = workouts.filter(w => {
+          const d = new Date(w.date);
+          return isWithinInterval(d, { start: monthStart, end: monthEnd });
+        }).length;
+        data.push({ name: format(monthStart, 'MMM', { locale: ru }), count });
+      }
+    } else if (activityPeriod === 'all') {
+      if (workouts.length === 0) return [];
+      const sortedWorkouts = [...workouts].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      const firstDate = new Date(sortedWorkouts[0].date);
+      const start = startOfMonth(firstDate);
+      const end = startOfMonth(now);
+      
+      let current = start;
+      while (current <= end) {
+        const mStart = startOfMonth(current);
+        const mEnd = endOfMonth(current);
+        const count = workouts.filter(w => {
+          const d = new Date(w.date);
+          return isWithinInterval(d, { start: mStart, end: mEnd });
+        }).length;
+        data.push({ name: format(mStart, 'MMM', { locale: ru }), count });
+        // Add one month
+        current = new Date(current.getFullYear(), current.getMonth() + 1, 1);
+      }
     }
     return data;
-  }, [workouts]);
+  }, [workouts, activityPeriod]);
 
   const strengthByExercise = useMemo(() => {
     const groups: Record<string, StrengthRecord[]> = {};
@@ -3873,8 +4021,31 @@ function ProgressPage({
 
             {/* Activity Chart */}
             <div className="bg-surface border-2 border-border rounded-3xl p-5 shadow-sm">
-              <h4 className="text-[10px] text-muted uppercase font-bold tracking-widest mb-3">Активность</h4>
-              <div className="h-[120px] w-full">
+              <div className="flex justify-between items-center mb-3">
+                <h4 className="text-[10px] text-muted uppercase font-bold tracking-widest">Активность</h4>
+                <div className="flex gap-1 bg-surface-2/50 rounded-xl p-1">
+                  {[
+                    { id: '8w', label: '8 нед' },
+                    { id: '6m', label: '6 мес' },
+                    { id: 'all', label: 'Всё' }
+                  ].map(p => (
+                    <button
+                      key={p.id}
+                      onClick={() => setActivityPeriod(p.id as any)}
+                      className={`${activityPeriod === p.id ? 'bg-accent text-white rounded-lg' : 'text-muted hover:text-accent'} px-3 py-1 text-[10px] font-bold transition-all`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <motion.div 
+                key={activityPeriod}
+                initial={{ opacity: 0 }} 
+                animate={{ opacity: 1 }} 
+                transition={{ duration: 0.2 }}
+                className="h-[120px] w-full"
+              >
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={activityData}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
@@ -3898,7 +4069,7 @@ function ProgressPage({
                     />
                   </AreaChart>
                 </ResponsiveContainer>
-              </div>
+              </motion.div>
             </div>
 
             {/* Record Form */}
@@ -4168,31 +4339,84 @@ function ProgressPage({
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
+                <div className="space-y-2 relative" ref={dropdown1Ref}>
                   <label className="text-[9px] text-muted uppercase font-bold px-1">Замер 1 (До)</label>
-                  <select 
-                    value={selectedMeasure1}
-                    onChange={(e) => setSelectedMeasure1(e.target.value)}
-                    className="w-full bg-surface-2 border-2 border-border text-text p-3 rounded-xl text-xs font-bold outline-none focus:border-accent transition-all"
+                  <button 
+                    onClick={() => setIsDropdown1Open(!isDropdown1Open)}
+                    className="w-full bg-surface border-2 border-border text-text p-4 rounded-2xl text-[13px] font-bold outline-none flex items-center justify-between cursor-pointer hover:border-accent/50 transition-all"
                   >
-                    <option value="">Выбрать...</option>
-                    {measurements.filter(m => m.photos?.length).map(m => (
-                      <option key={m.id} value={m.id}>{format(new Date(m.date), 'd MMM yyyy', { locale: ru })} ({m.weight} кг)</option>
-                    ))}
-                  </select>
+                    <span>
+                      {selectedMeasure1 
+                        ? format(new Date(measurements.find(m => m.id === selectedMeasure1)!.date), 'd MMM yyyy', { locale: ru }) 
+                        : 'Выбрать...'}
+                    </span>
+                    <ChevronDown size={16} className={`transition-transform ${isDropdown1Open ? 'rotate-180' : ''}`} />
+                  </button>
+                  <AnimatePresence>
+                    {isDropdown1Open && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        className="absolute top-full left-0 right-0 mt-1 bg-surface border-2 border-border rounded-2xl shadow-xl z-50 overflow-hidden"
+                      >
+                        <div className="max-h-[200px] overflow-y-auto">
+                          {measurements.filter(m => m.photos?.length).map(m => (
+                            <div 
+                              key={m.id} 
+                              onClick={() => {
+                                setSelectedMeasure1(m.id!);
+                                setIsDropdown1Open(false);
+                              }}
+                              className="p-4 text-[13px] font-bold hover:bg-accent/10 transition-all cursor-pointer border-b border-border last:border-0"
+                            >
+                              {format(new Date(m.date), 'd MMM yyyy', { locale: ru })} ({m.weight} кг)
+                            </div>
+                          ))}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
-                <div className="space-y-2">
+
+                <div className="space-y-2 relative" ref={dropdown2Ref}>
                   <label className="text-[9px] text-muted uppercase font-bold px-1">Замер 2 (После)</label>
-                  <select 
-                    value={selectedMeasure2}
-                    onChange={(e) => setSelectedMeasure2(e.target.value)}
-                    className="w-full bg-surface-2 border-2 border-border text-text p-3 rounded-xl text-xs font-bold outline-none focus:border-accent transition-all"
+                  <button 
+                    onClick={() => setIsDropdown2Open(!isDropdown2Open)}
+                    className="w-full bg-surface border-2 border-border text-text p-4 rounded-2xl text-[13px] font-bold outline-none flex items-center justify-between cursor-pointer hover:border-accent/50 transition-all"
                   >
-                    <option value="">Выбрать...</option>
-                    {measurements.filter(m => m.photos?.length).map(m => (
-                      <option key={m.id} value={m.id}>{format(new Date(m.date), 'd MMM yyyy', { locale: ru })} ({m.weight} кг)</option>
-                    ))}
-                  </select>
+                    <span>
+                      {selectedMeasure2 
+                        ? format(new Date(measurements.find(m => m.id === selectedMeasure2)!.date), 'd MMM yyyy', { locale: ru }) 
+                        : 'Выбрать...'}
+                    </span>
+                    <ChevronDown size={16} className={`transition-transform ${isDropdown2Open ? 'rotate-180' : ''}`} />
+                  </button>
+                  <AnimatePresence>
+                    {isDropdown2Open && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        className="absolute top-full left-0 right-0 mt-1 bg-surface border-2 border-border rounded-2xl shadow-xl z-50 overflow-hidden"
+                      >
+                        <div className="max-h-[200px] overflow-y-auto">
+                          {measurements.filter(m => m.photos?.length).map(m => (
+                            <div 
+                              key={m.id} 
+                              onClick={() => {
+                                setSelectedMeasure2(m.id!);
+                                setIsDropdown2Open(false);
+                              }}
+                              className="p-4 text-[13px] font-bold hover:bg-accent/10 transition-all cursor-pointer border-b border-border last:border-0"
+                            >
+                              {format(new Date(m.date), 'd MMM yyyy', { locale: ru })} ({m.weight} кг)
+                            </div>
+                          ))}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               </div>
 
@@ -4274,9 +4498,216 @@ function StatItem({ value, label }: { value: any; label: string }) {
   );
 }
 
-function StrengthPage({ records, onSave, onDelete, onUpdate, programData }: { records: StrengthRecord[]; onSave: (data: any) => void; onDelete: (id: string) => void; onUpdate: (id: string, data: any) => void; programData: any }) {
-  // This component is kept for code compatibility but no longer rendered in main nav
-  return null;
+function StrengthPage({ 
+  records, 
+  onSave, 
+  onDelete, 
+  onUpdate, 
+  programData,
+  onBack 
+}: { 
+  records: StrengthRecord[]; 
+  onSave: (data: any) => void; 
+  onDelete: (id: string) => void; 
+  onUpdate: (id: string, data: any) => void; 
+  programData: any;
+  onBack: () => void;
+}) {
+  const [exercise, setExercise] = useState('');
+  const [weight, setWeight] = useState('');
+  const [reps, setReps] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editWeight, setEditWeight] = useState('');
+  const [editReps, setEditReps] = useState('');
+
+  // Set initial exercise if empty
+  useEffect(() => {
+    if (!exercise && programData) {
+      for (const day of Object.values(programData) as any[]) {
+        const firstStrength = day.exercises?.find((ex: any) => !ex.isCardio && !ex.bodyweight);
+        if (firstStrength) {
+          setExercise(firstStrength.name);
+          break;
+        }
+      }
+    }
+  }, [programData, exercise]);
+
+  const strengthByExercise = useMemo(() => {
+    const groups: Record<string, StrengthRecord[]> = {};
+    records.forEach(r => {
+      if (!groups[r.exercise]) groups[r.exercise] = [];
+      groups[r.exercise].push(r);
+    });
+    return groups;
+  }, [records]);
+
+  const handleSave = () => {
+    if (!weight || !reps || !exercise) return;
+    onSave({ exercise, weight: Number(weight), reps: Number(reps) });
+    setWeight('');
+    setReps('');
+  };
+
+  const handleStartEdit = (r: StrengthRecord) => {
+    setEditingId(r.id || null);
+    setEditWeight(r.weight.toString());
+    setEditReps(r.reps.toString());
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingId) return;
+    onUpdate(editingId, { weight: Number(editWeight), reps: Number(editReps) });
+    setEditingId(null);
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
+      <div className="flex items-center justify-between mb-2">
+        <button 
+          onClick={onBack}
+          className="p-2 -ml-2 text-muted hover:text-accent transition-all"
+        >
+          <ChevronLeft size={24} />
+        </button>
+        <h3 className="font-serif text-xl text-accent font-light">Силовые рекорды</h3>
+        <div className="w-10" />
+      </div>
+
+      {/* Record Form */}
+      <div className="bg-surface border-2 border-border rounded-[32px] p-6 shadow-sm space-y-6">
+        <h3 className="text-sm font-bold text-accent uppercase tracking-widest">Записать результат</h3>
+        <div className="space-y-4">
+          <select 
+            className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-[13px] font-bold outline-none focus:border-accent transition-all appearance-none"
+            value={exercise}
+            onChange={(e) => setExercise(e.target.value)}
+          >
+            {Object.entries(programData).map(([day, p]: [string, any]) => (
+              <optgroup key={day} label={`${day} — ${p.subtitle}`}>
+                {p.exercises?.filter((ex: any) => !ex.isCardio && !ex.bodyweight).map((ex: any, idx: number) => (
+                  <option key={`${day}-${ex.name}-${idx}`} value={ex.name}>{ex.name}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+          <div className="grid grid-cols-2 gap-3">
+            <input 
+              type="number" 
+              placeholder="Вес (кг)"
+              className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
+              value={weight}
+              onChange={(e) => setWeight(e.target.value)}
+            />
+            <input 
+              type="number" 
+              placeholder="Повторы"
+              className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
+              value={reps}
+              onChange={(e) => setReps(e.target.value)}
+            />
+          </div>
+          <button 
+            onClick={handleSave}
+            className="w-full py-4 bg-accent text-white font-bold text-sm uppercase tracking-widest rounded-2xl shadow-lg transition-all active:scale-95"
+          >
+            Сохранить
+          </button>
+        </div>
+      </div>
+
+      {/* Strength Cards */}
+      <div className="space-y-4">
+        {Object.keys(strengthByExercise).length === 0 ? (
+          <div className="text-center py-20 bg-surface rounded-[40px] border-2 border-border shadow-sm">
+            <Trophy className="mx-auto mb-4 text-accent/30" size={48} />
+            <p className="text-sm font-bold text-text">Здесь будут ваши рекорды</p>
+            <p className="text-xs text-muted mt-2">Запишите свой первый результат выше</p>
+          </div>
+        ) : (
+          Object.entries(strengthByExercise).map(([name, entries]) => {
+            const sorted = [...entries].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+            const latest = sorted[sorted.length - 1];
+            const best = sorted.reduce((max, e) => e.weight > max.weight ? e : max, sorted[0]);
+            const chartData = sorted.map(e => ({ date: format(new Date(e.date), 'd MMM', { locale: ru }), weight: e.weight }));
+
+            return (
+              <div key={name} className="bg-surface border-2 border-border rounded-3xl p-6 space-y-4 shadow-sm">
+                <div className="flex justify-between items-center">
+                  <h4 className="text-[14px] font-bold text-text">{name}</h4>
+                  <Trophy size={16} className="text-accent-2" />
+                </div>
+                
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="bg-surface-2/50 p-3 rounded-2xl text-center">
+                    <div className="text-[8px] text-muted uppercase font-bold mb-1">Сейчас</div>
+                    <div className="text-xl font-display font-bold text-accent">{latest.weight}</div>
+                  </div>
+                  <div className="bg-accent-2/10 p-3 rounded-2xl text-center">
+                    <div className="text-[8px] text-muted uppercase font-bold mb-1">Рекорд</div>
+                    <div className="text-xl font-display font-bold text-accent-2">{best.weight}</div>
+                  </div>
+                  <div className="bg-done/10 p-3 rounded-2xl text-center">
+                    <div className="text-[8px] text-muted uppercase font-bold mb-1">Цель</div>
+                    <div className="text-xl font-display font-bold text-done">{latest.weight + 1}</div>
+                  </div>
+                </div>
+                
+                <div className="h-[80px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={chartData}>
+                      <Line 
+                        type="monotone" 
+                        dataKey="weight" 
+                        stroke="var(--color-accent)" 
+                        strokeWidth={2} 
+                        dot={false} 
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div className="space-y-2 pt-2 border-t border-border/30">
+                  {[...sorted].reverse().slice(0, 3).map((entry, idx) => (
+                    <div key={entry.id || idx} className="flex justify-between items-center">
+                      {editingId === entry.id ? (
+                        <div className="flex gap-2 items-center w-full">
+                          <input 
+                            type="number" 
+                            value={editWeight} 
+                            onChange={(e) => setEditWeight(e.target.value)}
+                            className="w-16 bg-surface-2 border border-border p-1 rounded-lg text-xs font-bold"
+                          />
+                          <input 
+                            type="number" 
+                            value={editReps} 
+                            onChange={(e) => setEditReps(e.target.value)}
+                            className="w-16 bg-surface-2 border border-border p-1 rounded-lg text-xs font-bold"
+                          />
+                          <button onClick={handleSaveEdit} className="text-done p-1"><Check size={16} /></button>
+                          <button onClick={() => setEditingId(null)} className="text-muted p-1"><X size={16} /></button>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="text-[10px] font-bold text-text">
+                            {format(new Date(entry.date), 'd MMM', { locale: ru })}: {entry.weight}кг × {entry.reps}
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={() => handleStartEdit(entry)} className="text-muted hover:text-accent p-1"><Edit2 size={14} /></button>
+                            <button onClick={() => onDelete(entry.id!)} className="text-muted hover:text-error p-1"><Trash2 size={14} /></button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </motion.div>
+  );
 }
 
 function WeightPage({ 
@@ -4360,10 +4791,8 @@ function WeightPage({
   const compressImage = (file: File): Promise<Blob> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.readAsDataURL(file);
       reader.onload = (event) => {
         const img = new Image();
-        img.src = event.target?.result as string;
         img.onload = () => {
           const canvas = document.createElement('canvas');
           let width = img.width;
@@ -4391,8 +4820,11 @@ function WeightPage({
             else reject(new Error('Canvas to Blob failed'));
           }, 'image/jpeg', 0.8);
         };
+        img.onerror = () => reject(new Error('Image loading failed'));
+        img.src = event.target?.result as string;
       };
       reader.onerror = (error) => reject(error);
+      reader.readAsDataURL(file);
     });
   };
 
@@ -4775,7 +5207,6 @@ function WeightPage({
                       ref={fileInputRef} 
                       className="hidden" 
                       accept="image/*" 
-                      capture="environment"
                       onChange={handleFileChange} 
                     />
                   </div>
@@ -5037,7 +5468,7 @@ function WeightPage({
   );
 }
 
-function TechPage({ items, onEdit, isLoading }: { items: TechItem[]; onEdit: () => void; isLoading: boolean }) {
+function TechPage({ items, onEdit, isLoading, onBack }: { items: TechItem[]; onEdit: () => void; isLoading: boolean; onBack: () => void }) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -5051,9 +5482,17 @@ function TechPage({ items, onEdit, isLoading }: { items: TechItem[]; onEdit: () 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
       <div className="flex justify-between items-start">
-        <div className="space-y-1">
-          <h3 className="font-serif text-xl text-accent font-light">Памятка по технике</h3>
-          <p className="text-[10px] text-muted uppercase tracking-wider">Настраиваемая база знаний</p>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={onBack}
+            className="p-2 -ml-2 text-muted hover:text-accent transition-all"
+          >
+            <ChevronLeft size={24} />
+          </button>
+          <div className="space-y-1">
+            <h3 className="font-serif text-xl text-accent font-light">Памятка по технике</h3>
+            <p className="text-[10px] text-muted uppercase tracking-wider">Настраиваемая база знаний</p>
+          </div>
         </div>
         <button 
           onClick={onEdit}

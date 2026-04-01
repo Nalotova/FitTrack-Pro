@@ -118,7 +118,7 @@ service cloud.firestore {
 
     function isValidMeasurement(data) {
       return data.keys().hasAll(['userId', 'date', 'weight']) &&
-             data.keys().hasOnly(['userId', 'date', 'weight', 'age', 'fat', 'muscle', 'water', 'chest', 'waist', 'waistHigh', 'waistNavel', 'waistWidest', 'hips', 'bicep', 'thigh', 'bmi', 'visceralFat', 'skeletalMuscleIndex', 'waistHipRatio', 'bodyType', 'bodyShape', 'bmr', 'boneMass', 'protein', 'fatFreeMass', 'biologicalAge', 'heartRate']) &&
+             data.keys().hasOnly(['userId', 'date', 'weight', 'age', 'fat', 'muscle', 'water', 'chest', 'waist', 'waistHigh', 'waistNavel', 'waistWidest', 'hips', 'bicep', 'thigh', 'bmi', 'visceralFat', 'skeletalMuscleIndex', 'waistHipRatio', 'bodyType', 'bodyShape', 'bmr', 'boneMass', 'protein', 'fatFreeMass', 'biologicalAge', 'heartRate', 'photos']) &&
              data.userId == request.auth.uid &&
              isValidDateString(data.date) &&
              data.weight is number &&
@@ -145,7 +145,8 @@ service cloud.firestore {
              (!('protein' in data) || data.protein is number || data.protein == null) &&
              (!('fatFreeMass' in data) || data.fatFreeMass is number || data.fatFreeMass == null) &&
              (!('biologicalAge' in data) || data.biologicalAge is number || data.biologicalAge == null) &&
-             (!('heartRate' in data) || data.heartRate is number || data.heartRate == null);
+             (!('heartRate' in data) || data.heartRate is number || data.heartRate == null) &&
+             (!('photos' in data) || (data.photos is list && data.photos.size() <= 3));
     }
 
     function isValidStrengthRecord(data) {
