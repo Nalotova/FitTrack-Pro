@@ -136,6 +136,18 @@
         "order": { "type": "number" }
       },
       "required": ["userId", "title", "subtitle", "content", "order"]
+    },
+    "CoachMessage": {
+      "title": "Coach Message",
+      "description": "A message in the coach chat history.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "assistant"] },
+        "content": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "role", "content", "timestamp"]
     }
   },
   "firestore": {
@@ -166,6 +178,10 @@
     "/tech/{techId}": {
       "schema": "TechItem",
       "description": "Collection of technical tips."
+    },
+    "/coach_messages/{messageId}": {
+      "schema": "CoachMessage",
+      "description": "Chat history with the AI coach."
     }
   }
 }

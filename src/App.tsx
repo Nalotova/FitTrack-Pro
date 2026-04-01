@@ -61,7 +61,7 @@ import {
   AreaChart, 
   Area 
 } from 'recharts';
-import { format, parseISO, subDays, isSameDay, startOfMonth, endOfMonth, differenceInDays } from 'date-fns';
+import { format, parseISO, subDays, isSameDay, startOfMonth, endOfMonth, differenceInDays, startOfWeek, subWeeks, isWithinInterval, endOfWeek } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { 
   auth, 
@@ -320,7 +320,7 @@ const PROGRAM: Record<string, { subtitle: string; isCardio?: boolean; exercises:
     "isCardio": true,
     "exercises": [
       {
-        "name": "Ходьба / горы Триберга",
+        "name": "Ходьба",
         "scheme": "30-60 мин · пульс 115-130",
         "sets": 1,
         "isCardio": true,
@@ -353,7 +353,7 @@ const PROGRAM: Record<string, { subtitle: string; isCardio?: boolean; exercises:
     "isCardio": true,
     "exercises": [
       {
-        "name": "Ходьба / горы Триберга",
+        "name": "Ходьба",
         "scheme": "30-60 мин · спокойный темп",
         "sets": 1,
         "isCardio": true,
@@ -436,10 +436,7 @@ function AppContent() {
   const [measurements, setMeasurements] = useState<WeightMeasurement[]>([]);
   const [strengthRecords, setStrengthRecords] = useState<StrengthRecord[]>([]);
   const [activeTab, setActiveTab] = useState<'today' | 'progress' | 'strength' | 'tech' | 'coach' | 'profile' | 'measurements'>('today');
-  const [coachMessages, setCoachMessages] = useState<any[]>(() => {
-    const saved = localStorage.getItem('coach_messages');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [coachMessages, setCoachMessages] = useState<any[]>([]);
   const [isCoachLoading, setIsCoachLoading] = useState(false);
   const [programData, setProgramData] = useState<Record<string, any>>(PROGRAM);
   const [isProgramLoading, setIsProgramLoading] = useState(true);
@@ -454,6 +451,19 @@ function AppContent() {
     message: string;
     onConfirm: () => void;
   } | null>(null);
+  
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
   
   // Today's state
   const [currentDay, setCurrentDay] = useState('День 1');
@@ -558,10 +568,49 @@ function AppContent() {
     return () => clearTimeout(timer);
   }, [currentDay, checkedExercises, currentSets, currentNotes, user, isWorkoutStateLoading]);
 
-  // Persistence for Coach messages
+  // Persistence for Coach messages (Firestore migration)
   useEffect(() => {
-    localStorage.setItem('coach_messages', JSON.stringify(coachMessages));
-  }, [coachMessages]);
+    if (!user) {
+      setCoachMessages([]);
+      return;
+    }
+    
+    const unsub = onSnapshot(
+      query(collection(db, 'coach_messages'), where('userId', '==', user.uid)),
+      (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setCoachMessages(data.sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()));
+      },
+      (error) => handleFirestoreError(error, OperationType.LIST, 'coach_messages')
+    );
+    
+    return () => unsub();
+  }, [user]);
+
+  const handleAddCoachMessage = async (message: { role: string, content: string, files?: any[] }) => {
+    if (!user) return;
+    try {
+      await addDoc(collection(db, 'coach_messages'), {
+        userId: user.uid,
+        ...message,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'coach_messages');
+    }
+  };
+
+  const handleClearCoachMessages = async () => {
+    if (!user) return;
+    try {
+      const batch = writeBatch(db);
+      const snapshot = await getDocs(query(collection(db, 'coach_messages'), where('userId', '==', user.uid)));
+      snapshot.forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'coach_messages');
+    }
+  };
 
   const saveWorkoutState = async (updates: any) => {
     if (!user) return;
@@ -649,10 +698,6 @@ function AppContent() {
   // Profile Listener
   useEffect(() => {
     if (!user) return;
-    (window as any).handleUpdateProgramFromCoach = handleUpdateProgram;
-    (window as any).handleUpdateTechFromCoach = handleUpdateTech;
-    (window as any).handleUpdateProfileFromCoach = handleUpdateProfile;
-    (window as any).handleSaveWeightFromCoach = handleSaveWeight;
     
     // Fallback timeout to ensure app loads even if Firestore hangs
     const timeout = setTimeout(() => {
@@ -1166,13 +1211,41 @@ function AppContent() {
   // Stats
   const streakWeeks = useMemo(() => {
     if (workouts.length === 0) return 0;
-    // Simple logic: count workouts this month / 3 as a proxy for streak
-    const thisMonth = workouts.filter(w => {
-      const d = new Date(w.date);
-      const now = new Date();
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-    }).length;
-    return Math.floor(thisMonth / 3);
+    
+    // Get unique workout dates
+    const workoutDates = Array.from(new Set(workouts.map(w => format(new Date(w.date), 'yyyy-MM-dd'))));
+    
+    if (workoutDates.length === 0) return 0;
+
+    const now = new Date();
+    let currentWeekStart = startOfWeek(now, { weekStartsOn: 1 });
+    let streak = 0;
+    
+    const hasWorkoutInWeek = (weekStart: Date) => {
+      const interval = { start: weekStart, end: endOfWeek(weekStart, { weekStartsOn: 1 }) };
+      return workoutDates.some(dateStr => {
+        const d = parseISO(dateStr);
+        return isWithinInterval(d, interval);
+      });
+    };
+
+    // If no workout this week AND no workout last week, streak is 0
+    const lastWeekStart = subWeeks(currentWeekStart, 1);
+    if (!hasWorkoutInWeek(currentWeekStart) && !hasWorkoutInWeek(lastWeekStart)) {
+      return 0;
+    }
+
+    // If no workout this week but there was one last week, we start counting from last week
+    if (!hasWorkoutInWeek(currentWeekStart)) {
+      currentWeekStart = lastWeekStart;
+    }
+
+    while (hasWorkoutInWeek(currentWeekStart)) {
+      streak++;
+      currentWeekStart = subWeeks(currentWeekStart, 1);
+    }
+
+    return streak;
   }, [workouts]);
 
   const weekLabel = useMemo(() => {
@@ -1480,12 +1553,18 @@ function AppContent() {
               onClick={() => setActiveTab('profile')}
             >
               <div className="logo text-lg font-display font-bold text-accent leading-none">
-                {userProfile?.displayName || 'Таня'} <span className="text-accent-2">·</span> Тренировки
+                {userProfile?.displayName || 'Пользователь'} <span className="text-accent-2">·</span> Тренировки
               </div>
               <div className="text-[9px] text-muted uppercase font-semibold tracking-[0.15em] mt-0.5">{weekLabel}</div>
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {!isOnline && (
+              <div className="flex items-center gap-1.5 px-2 py-1 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500 animate-pulse">
+                <AlertCircle size={14} />
+                <span className="text-[10px] font-bold uppercase tracking-wider">Offline</span>
+              </div>
+            )}
             <button 
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
               className="w-10 h-10 rounded-xl bg-surface border border-border flex items-center justify-center text-accent hover:border-accent/50 transition-all"
@@ -1551,13 +1630,18 @@ function AppContent() {
               measurements={measurements} 
               strengthRecords={strengthRecords}
               messages={coachMessages}
-              setMessages={setCoachMessages}
+              onAddMessage={handleAddCoachMessage}
+              onClearMessages={handleClearCoachMessages}
               isLoading={isCoachLoading}
               setIsLoading={setIsCoachLoading}
               programData={programData}
               techData={techData}
               userProfile={userProfile}
               setNotification={setNotification}
+              onUpdateProgram={handleUpdateProgram}
+              onUpdateTech={handleUpdateTech}
+              onUpdateProfile={handleUpdateProfile}
+              onSaveWeight={handleSaveWeight}
             />
           )}
           {activeTab === 'progress' && (
@@ -2103,13 +2187,18 @@ function CoachPage({
   measurements, 
   strengthRecords,
   messages,
-  setMessages,
+  onAddMessage,
+  onClearMessages,
   isLoading,
   setIsLoading,
   programData,
   techData,
   userProfile,
-  setNotification
+  setNotification,
+  onUpdateProgram,
+  onUpdateTech,
+  onUpdateProfile,
+  onSaveWeight
 }: any) {
   const [input, setInput] = useState('');
   const [attachedFiles, setAttachedFiles] = useState<{data: string, mimeType: string, name: string}[]>([]);
@@ -2165,8 +2254,7 @@ function CoachPage({
   };
 
   const handleClearChat = () => {
-    setMessages([]);
-    localStorage.removeItem('coach_messages');
+    onClearMessages();
     setInput('');
     setAttachedFiles([]);
     setShowClearConfirm(false);
@@ -2188,8 +2276,7 @@ function CoachPage({
     }
     if (audioBlob) userMsg.isAudio = true;
 
-    const newMessages = [...messages, userMsg];
-    setMessages(newMessages);
+    onAddMessage(userMsg);
     setInput('');
     setAttachedFiles([]);
     setIsLoading(true);
@@ -2488,8 +2575,8 @@ function CoachPage({
               });
             }
 
-            if (typeof (window as any).handleUpdateProgramFromCoach === 'function') {
-              await (window as any).handleUpdateProgramFromCoach(formattedData);
+            if (typeof onUpdateProgram === 'function') {
+              await onUpdateProgram(formattedData);
               
               const confirmResponse = await callGeminiWithRetry({
                 model: modelName,
@@ -2513,15 +2600,15 @@ function CoachPage({
               });
               
               const aiMsg = { role: 'assistant', content: confirmResponse.text || "Программа успешно обновлена! 💪" };
-              setMessages([...newMessages, aiMsg]);
+              onAddMessage(aiMsg);
               setIsLoading(false);
               return;
             }
           } else if (call.name === 'update_tech_data') {
             const { newItems } = call.args as any;
             
-            if (typeof (window as any).handleUpdateTechFromCoach === 'function') {
-              await (window as any).handleUpdateTechFromCoach(newItems);
+            if (typeof onUpdateTech === 'function') {
+              await onUpdateTech(newItems);
               
               const confirmResponse = await callGeminiWithRetry({
                 model: modelName,
@@ -2545,15 +2632,15 @@ function CoachPage({
               });
               
               const aiMsg = { role: 'assistant', content: confirmResponse.text || "Данные техники успешно обновлены! 📚" };
-              setMessages([...newMessages, aiMsg]);
+              onAddMessage(aiMsg);
               setIsLoading(false);
               return;
             }
           } else if (call.name === 'add_bioimpedance_measurement') {
             const measurementData = call.args as any;
             
-            if (typeof (window as any).handleSaveWeightFromCoach === 'function') {
-              await (window as any).handleSaveWeightFromCoach(measurementData);
+            if (typeof onSaveWeight === 'function') {
+              await onSaveWeight(measurementData);
               
               const confirmResponse = await callGeminiWithRetry({
                 model: modelName,
@@ -2577,7 +2664,7 @@ function CoachPage({
               });
               
               const aiMsg = { role: 'assistant', content: confirmResponse.text || "Замеры успешно сохранены! 📊" };
-              setMessages([...newMessages, aiMsg]);
+              onAddMessage(aiMsg);
               setIsLoading(false);
               return;
             }
@@ -2586,7 +2673,7 @@ function CoachPage({
       }
 
       const aiMsg = { role: 'assistant', content: response.text || "Извини, я не смогла сформулировать ответ. Попробуй еще раз! 🧘‍♀️" };
-      setMessages([...newMessages, aiMsg]);
+      onAddMessage(aiMsg);
     } catch (error: any) {
       console.error("Coach error details:", error);
       
@@ -2604,7 +2691,7 @@ function CoachPage({
         errorMessage = `Ошибка связи: ${error?.message || "Неизвестная ошибка"}. Попробуйте очистить чат (корзина) и повторить. 🧘‍♀️`;
       }
       
-      setMessages([...newMessages, { role: 'assistant', content: errorMessage }]);
+      onAddMessage({ role: 'assistant', content: errorMessage });
     } finally {
       setIsLoading(false);
     }
