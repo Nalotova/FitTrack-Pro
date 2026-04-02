@@ -46,7 +46,11 @@ import {
   Square,
   Trophy,
   Moon,
-  Sun
+  Sun,
+  Video,
+  FileText,
+  FileAudio,
+  File
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
@@ -611,10 +615,28 @@ function AppContent() {
   const handleClearCoachMessages = async () => {
     if (!user) return;
     try {
-      const batch = writeBatch(db);
       const snapshot = await getDocs(query(collection(db, 'coach_messages'), where('userId', '==', user.uid)));
-      snapshot.forEach(doc => batch.delete(doc.ref));
-      await batch.commit();
+      
+      const chunks = [];
+      let currentChunk = [];
+      snapshot.forEach((doc: any) => {
+        currentChunk.push(doc);
+        if (currentChunk.length === 400) {
+          chunks.push(currentChunk);
+          currentChunk = [];
+        }
+      });
+      if (currentChunk.length > 0) {
+        chunks.push(currentChunk);
+      }
+
+      for (const chunk of chunks) {
+        const batch = writeBatch(db);
+        for (const doc of chunk) {
+          batch.delete(doc.ref);
+        }
+        await batch.commit();
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, 'coach_messages');
     }
@@ -1078,23 +1100,12 @@ function AppContent() {
   };
 
   const handleDeleteWeight = (id: string) => {
-    const measurement = measurements.find(m => m.id === id);
     setConfirmDialog({
       isOpen: true,
       title: 'Удаление замера',
       message: 'Вы уверены, что хотите удалить этот замер?',
       onConfirm: async () => {
         try {
-          if (measurement?.photos && measurement.photos.length > 0) {
-            for (const photoUrl of measurement.photos) {
-              try {
-                const photoRef = ref(storage, photoUrl);
-                await deleteObject(photoRef);
-              } catch (e) {
-                console.error("Failed to delete photo from storage:", e);
-              }
-            }
-          }
           await deleteDoc(doc(db, 'measurements', id));
         } catch (error) {
           handleFirestoreError(error, OperationType.DELETE, `measurements/${id}`);
@@ -2303,14 +2314,43 @@ function CoachPage({
     if ((!textToSend.trim() && filesToSend.length === 0 && !audioBlob) || isLoading) return;
 
     const userMsg: any = { role: 'user', content: textToSend };
+    const finalFiles = [];
+    
     if (filesToSend.length > 0) {
-      userMsg.files = filesToSend.map(f => ({
-        data: f.data,
-        mimeType: f.mimeType,
-        name: f.name
-      }));
+      filesToSend.forEach(f => {
+        finalFiles.push({
+          data: f.data,
+          mimeType: f.mimeType,
+          name: f.name
+        });
+      });
     }
-    if (audioBlob) userMsg.isAudio = true;
+
+    let audioBase64Data = null;
+    let audioMimeType = null;
+    if (audioBlob) {
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve) => {
+        reader.onloadend = () => {
+          const base64 = (reader.result as string).split(',')[1];
+          resolve(base64);
+        };
+      });
+      reader.readAsDataURL(audioBlob);
+      audioBase64Data = await base64Promise;
+      audioMimeType = audioBlob.type || "audio/webm";
+      
+      finalFiles.push({
+        data: audioBase64Data,
+        mimeType: audioMimeType,
+        name: "Голосовое сообщение"
+      });
+      userMsg.isAudio = true;
+    }
+
+    if (finalFiles.length > 0) {
+      userMsg.files = finalFiles;
+    }
 
     onAddMessage(userMsg);
     setInput('');
@@ -2397,8 +2437,8 @@ function CoachPage({
         userParts.push({ text: textToSend });
       }
 
-      if (filesToSend.length > 0) {
-        filesToSend.forEach(f => {
+      if (finalFiles.length > 0) {
+        finalFiles.forEach(f => {
           userParts.push({
             inlineData: {
               data: f.data,
@@ -2408,34 +2448,14 @@ function CoachPage({
         });
       }
 
-      if (audioBlob) {
-        const reader = new FileReader();
-        const base64Promise = new Promise<string>((resolve) => {
-          reader.onloadend = () => {
-            const base64 = (reader.result as string).split(',')[1];
-            resolve(base64);
-          };
-        });
-        reader.readAsDataURL(audioBlob);
-        const base64Data = await base64Promise;
-        userParts.push({
-          inlineData: {
-            data: base64Data,
-            mimeType: audioBlob.type || "audio/webm"
-          }
-        });
-      }
-
       if (userParts.length === 0) return;
 
       const buildHistory = (msgs: any[]) => {
         const contents: any[] = [];
         const history = msgs.slice(-10);
-        let lastRole = '';
         
         history.forEach((m: any) => {
           const role = m.role === 'user' ? 'user' : 'model';
-          if (role === lastRole) return;
           
           const parts: any[] = [];
           if (m.content && m.content.trim()) {
@@ -2454,26 +2474,34 @@ function CoachPage({
           }
           
           if (parts.length > 0) {
-            contents.push({ role, parts });
-            lastRole = role;
+            if (contents.length > 0 && contents[contents.length - 1].role === role) {
+              // Merge with previous message of the same role
+              contents[contents.length - 1].parts.push(...parts);
+            } else {
+              contents.push({ role, parts });
+            }
           }
         });
 
-        if (contents.length > 0 && contents[contents.length - 1].role === 'user') {
-          contents.pop();
-        }
-        
         while (contents.length > 0 && contents[0].role !== 'user') {
           contents.shift();
         }
         return contents;
       };
 
-      const contents = [...buildHistory(messages), { role: 'user', parts: userParts }];
+      const historyContents = buildHistory(messages);
+      
+      if (historyContents.length > 0 && historyContents[historyContents.length - 1].role === 'user') {
+        // Merge new user message into the last history user message
+        historyContents[historyContents.length - 1].parts.push(...userParts);
+      } else {
+        // Append new user message
+        historyContents.push({ role: 'user', parts: userParts });
+      }
 
       const response = await callGeminiWithRetry({
         model: modelName,
-        contents: contents,
+        contents: historyContents,
         config: {
           systemInstruction: systemPrompt + "\n\nДАННЫЕ ПОЛЬЗОВАТЕЛЯ ДЛЯ АНАЛИЗА:\n" + dataContext,
           safetySettings: [
@@ -2733,6 +2761,11 @@ function CoachPage({
     }
   };
 
+  const handleSendRef = useRef(handleSend);
+  useEffect(() => {
+    handleSendRef.current = handleSend;
+  }, [handleSend]);
+
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -2748,7 +2781,7 @@ function CoachPage({
 
       mediaRecorder.onstop = () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        handleSend("", [], audioBlob);
+        handleSendRef.current(undefined, undefined, audioBlob);
         stream.getTracks().forEach(track => track.stop());
         if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
         setRecordingTime(0);
@@ -2910,28 +2943,47 @@ function CoachPage({
                 )}
                 {m.files && (
                   <div className="grid grid-cols-2 gap-2 mb-2">
-                    {m.files.map((f: any, fIdx: number) => (
-                      <div key={fIdx} className="bg-white/10 p-2 rounded-xl border border-white/20 flex items-center gap-2 overflow-hidden">
-                        {f.mimeType.startsWith('image/') ? (
-                          <img src={`data:${f.mimeType};base64,${f.data}`} alt="Attached" className="w-10 h-10 object-cover rounded-lg" />
-                        ) : f.mimeType.startsWith('video/') ? (
-                          <div className="w-10 h-10 bg-accent/20 rounded-lg flex items-center justify-center text-accent">
-                            <Camera size={16} />
+                    {m.files.map((f: any, fIdx: number) => {
+                      if (f.mimeType.startsWith('audio/')) {
+                        return (
+                          <div key={fIdx} className="col-span-2 bg-white/10 p-2 rounded-xl border border-white/20 flex flex-col gap-2 overflow-hidden">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 bg-black/20 rounded-lg flex items-center justify-center text-white">
+                                <FileAudio size={16} />
+                              </div>
+                              <span className="text-[10px] font-bold truncate flex-1">{f.name}</span>
+                            </div>
+                            <audio src={`data:${f.mimeType};base64,${f.data}`} controls className="w-full h-8" />
                           </div>
-                        ) : (
-                          <div className="w-10 h-10 bg-surface rounded-lg flex items-center justify-center text-muted">
-                            <BookOpen size={16} />
-                          </div>
-                        )}
-                        <span className="text-[10px] font-bold truncate flex-1">{f.name}</span>
-                      </div>
-                    ))}
+                        );
+                      }
+                      return (
+                        <div key={fIdx} className="bg-white/10 p-2 rounded-xl border border-white/20 flex items-center gap-2 overflow-hidden">
+                          {f.mimeType.startsWith('image/') ? (
+                            <img src={`data:${f.mimeType};base64,${f.data}`} alt="Attached" className="w-10 h-10 object-cover rounded-lg" />
+                          ) : f.mimeType.startsWith('video/') ? (
+                            <div className="w-10 h-10 bg-black/20 rounded-lg flex items-center justify-center text-white">
+                              <Video size={16} />
+                            </div>
+                          ) : f.mimeType.includes('pdf') || f.mimeType.startsWith('text/') ? (
+                            <div className="w-10 h-10 bg-black/20 rounded-lg flex items-center justify-center text-white">
+                              <FileText size={16} />
+                            </div>
+                          ) : (
+                            <div className="w-10 h-10 bg-black/20 rounded-lg flex items-center justify-center text-white">
+                              <File size={16} />
+                            </div>
+                          )}
+                          <span className="text-[10px] font-bold truncate flex-1">{f.name}</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
-                {m.isAudio && (
+                {m.isAudio && (!m.files || !m.files.some((f: any) => f.mimeType.startsWith('audio/'))) && (
                   <div className="flex items-center gap-2 mb-2 text-white/80 bg-white/10 p-2 rounded-xl">
                     <Mic size={16} />
-                    <span className="text-xs font-bold uppercase tracking-wider">Голосовое сообщение</span>
+                    <span className="text-xs font-bold uppercase tracking-wider">Голосовое сообщение (аудио недоступно)</span>
                   </div>
                 )}
                 {m.role === 'assistant' ? (
@@ -2975,7 +3027,15 @@ function CoachPage({
                   <img src={`data:${f.mimeType};base64,${f.data}`} alt="Preview" className="h-16 w-16 object-cover rounded-2xl border-2 border-accent shadow-sm" />
                 ) : (
                   <div className="h-16 w-16 bg-surface border-2 border-accent rounded-2xl flex flex-col items-center justify-center p-2 shadow-sm">
-                    {f.mimeType.startsWith('video/') ? <Camera size={20} className="text-accent" /> : <BookOpen size={20} className="text-accent" />}
+                    {f.mimeType.startsWith('video/') ? (
+                      <Video size={20} className="text-accent" />
+                    ) : f.mimeType.startsWith('audio/') ? (
+                      <FileAudio size={20} className="text-accent" />
+                    ) : f.mimeType.includes('pdf') || f.mimeType.startsWith('text/') ? (
+                      <FileText size={20} className="text-accent" />
+                    ) : (
+                      <File size={20} className="text-accent" />
+                    )}
                     <span className="text-[8px] font-bold truncate w-full text-center mt-1">{f.name}</span>
                   </div>
                 )}
@@ -3053,7 +3113,7 @@ function CoachPage({
             type="file" 
             ref={fileInputRef}
             onChange={handleFileUpload}
-            accept="image/*,video/*,application/pdf,text/plain"
+            accept="image/*,video/*,audio/*,application/pdf,text/plain"
             multiple
             className="hidden"
           />
@@ -3117,6 +3177,29 @@ function ProfilePage({
       if (!auth.currentUser) return;
       const userId = auth.currentUser.uid;
       
+      const deleteInBatches = async (querySnapshot: any) => {
+        const chunks = [];
+        let currentChunk = [];
+        querySnapshot.forEach((doc: any) => {
+          currentChunk.push(doc);
+          if (currentChunk.length === 400) {
+            chunks.push(currentChunk);
+            currentChunk = [];
+          }
+        });
+        if (currentChunk.length > 0) {
+          chunks.push(currentChunk);
+        }
+
+        for (const chunk of chunks) {
+          const batch = writeBatch(db);
+          for (const doc of chunk) {
+            batch.delete(doc.ref);
+          }
+          await batch.commit();
+        }
+      };
+
       // Delete user document
       await deleteDoc(doc(db, 'users', userId));
       
@@ -3128,34 +3211,23 @@ function ProfilePage({
       
       // Delete workouts
       const workoutsQuery = query(collection(db, 'workouts'), where('userId', '==', userId));
-      const workoutsSnapshot = await getDocs(workoutsQuery);
-      const batch = writeBatch(db);
-      workoutsSnapshot.forEach((doc) => {
-        batch.delete(doc.ref);
-      });
+      await deleteInBatches(await getDocs(workoutsQuery));
       
       // Delete measurements
       const measurementsQuery = query(collection(db, 'measurements'), where('userId', '==', userId));
-      const measurementsSnapshot = await getDocs(measurementsQuery);
-      measurementsSnapshot.forEach((doc) => {
-        batch.delete(doc.ref);
-      });
+      await deleteInBatches(await getDocs(measurementsQuery));
       
       // Delete strength records
       const strengthQuery = query(collection(db, 'strength'), where('userId', '==', userId));
-      const strengthSnapshot = await getDocs(strengthQuery);
-      strengthSnapshot.forEach((doc) => {
-        batch.delete(doc.ref);
-      });
+      await deleteInBatches(await getDocs(strengthQuery));
       
       // Delete tech items
       const techQuery = query(collection(db, 'tech'), where('userId', '==', userId));
-      const techSnapshot = await getDocs(techQuery);
-      techSnapshot.forEach((doc) => {
-        batch.delete(doc.ref);
-      });
+      await deleteInBatches(await getDocs(techQuery));
       
-      await batch.commit();
+      // Delete coach messages
+      const messagesQuery = query(collection(db, 'coach_messages'), where('userId', '==', userId));
+      await deleteInBatches(await getDocs(messagesQuery));
       
       // Clear local storage (chat history)
       localStorage.removeItem('coach_messages');
