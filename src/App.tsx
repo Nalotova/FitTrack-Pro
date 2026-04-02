@@ -48,6 +48,7 @@ import {
   Moon,
   Sun,
   Video,
+  Loader2,
   FileText,
   FileAudio,
   File
@@ -499,6 +500,56 @@ function AppContent() {
     localStorage.setItem('theme', theme);
   }, [theme]);
 
+  const cleanupOldFiles = async () => {
+    if (!user) return;
+    const now = new Date().getTime();
+    const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
+    
+    // Check measurements photos
+    const measurementsSnapshot = await getDocs(query(collection(db, 'measurements'), where('userId', '==', user.uid)));
+    for (const docSnap of measurementsSnapshot.docs) {
+      const data = docSnap.data();
+      if (data.photos && data.createdAt) {
+        const fileDate = new Date(data.createdAt).getTime();
+        if (now - fileDate > SEVEN_DAYS) {
+          // Delete files from storage
+          for (const photoUrl of data.photos) {
+            try {
+              const fileRef = ref(storage, photoUrl);
+              await deleteObject(fileRef);
+            } catch (e) { console.error("Error deleting file", e); }
+          }
+          // Update document to remove photo references
+          await setDoc(docSnap.ref, { photos: [] }, { merge: true });
+        }
+      }
+    }
+
+    // Check coach messages (audio)
+    const messagesSnapshot = await getDocs(query(collection(db, 'coach_messages'), where('userId', '==', user.uid)));
+    for (const docSnap of messagesSnapshot.docs) {
+      const data = docSnap.data();
+      if (data.files && data.timestamp) {
+        const fileDate = new Date(data.timestamp).getTime();
+        if (now - fileDate > SEVEN_DAYS) {
+          for (const file of data.files) {
+            if (file.mimeType && (file.mimeType.startsWith('audio/') || file.mimeType.startsWith('image/'))) {
+              try {
+                // Assuming files are stored in storage or embedded - if embedded, just update doc
+                // If stored in storage, delete here
+              } catch (e) { console.error("Error deleting file", e); }
+            }
+          }
+          await setDoc(docSnap.ref, { files: [] }, { merge: true });
+        }
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (user) cleanupOldFiles();
+  }, [user]);
+
   // Auth Listener
   useEffect(() => {
     let timeout: NodeJS.Timeout;
@@ -915,28 +966,37 @@ function AppContent() {
     }
   };
 
-  const handleUpdateProfile = async (data: Partial<UserProfile>) => {
+  const handleUpdateProfile = async (data: Partial<UserProfile>, photoFile?: File) => {
     if (!user) return;
     try {
       const userRef = doc(db, 'users', user.uid);
       const docSnap = await getDoc(userRef);
+      const existingData = docSnap.exists() ? docSnap.data() : {};
+      
+      let photoURL = data.photoURL !== undefined ? data.photoURL : existingData.photoURL;
+      
+      if (photoFile) {
+        const storageRef = ref(storage, `users/${user.uid}/profile.jpg`);
+        await uploadBytes(storageRef, photoFile);
+        photoURL = await getDownloadURL(storageRef);
+      }
+      
+      const updateData = { ...data, photoURL: photoURL || null, updatedAt: new Date().toISOString() };
       if (!docSnap.exists()) {
         const fullData = {
-          ...data,
+          ...updateData,
           displayName: data.displayName || user.displayName || 'Анонимный пользователь',
           email: user.email || '',
-          photoURL: data.photoURL || user.photoURL || '',
           role: 'user',
           createdAt: new Date().toISOString()
         };
         await setDoc(userRef, fullData);
       } else {
-        await setDoc(userRef, { ...data, updatedAt: new Date().toISOString() }, { merge: true });
+        await setDoc(userRef, updateData, { merge: true });
       }
-      return Promise.resolve();
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}`);
-      return Promise.reject(error);
+      throw error;
     }
   };
 
@@ -2279,22 +2339,48 @@ function CoachPage({
     }
   }, [messages]);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, compress: boolean = false) => {
     const files = e.target.files;
     if (files) {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        if (file) {
-          const reader = new FileReader();
-          reader.onload = (event) => {
-            const base64 = (event.target?.result as string).split(',')[1];
-            setAttachedFiles(prev => [...prev, {
-              data: base64,
-              mimeType: file.type || 'application/octet-stream',
-              name: file.name
-            }]);
-          };
-          reader.readAsDataURL(file);
+        if (file && !file.type.startsWith('video/')) {
+          if (compress && file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              const img = new Image();
+              img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const MAX_WIDTH = 800;
+                const scaleSize = MAX_WIDTH / img.width;
+                canvas.width = MAX_WIDTH;
+                canvas.height = img.height * scaleSize;
+                const ctx = canvas.getContext('2d');
+                ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+                const base64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+                setAttachedFiles(prev => [...prev, {
+                  data: base64,
+                  mimeType: 'image/jpeg',
+                  name: file.name,
+                  createdAt: new Date().toISOString()
+                }]);
+              };
+              img.src = event.target?.result as string;
+            };
+            reader.readAsDataURL(file);
+          } else {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              const base64 = (event.target?.result as string).split(',')[1];
+              setAttachedFiles(prev => [...prev, {
+                data: base64,
+                mimeType: file.type || 'application/octet-stream',
+                name: file.name,
+                createdAt: new Date().toISOString()
+              }]);
+            };
+            reader.readAsDataURL(file);
+          }
         }
       }
     }
@@ -2645,7 +2731,7 @@ function CoachPage({
               const confirmResponse = await callGeminiWithRetry({
                 model: modelName,
                 contents: [
-                  ...contents,
+                  ...historyContents,
                   response.candidates[0].content,
                   { 
                     role: 'user', 
@@ -2677,7 +2763,7 @@ function CoachPage({
               const confirmResponse = await callGeminiWithRetry({
                 model: modelName,
                 contents: [
-                  ...contents,
+                  ...historyContents,
                   response.candidates[0].content,
                   { 
                     role: 'user', 
@@ -2709,7 +2795,7 @@ function CoachPage({
               const confirmResponse = await callGeminiWithRetry({
                 model: modelName,
                 contents: [
-                  ...contents,
+                  ...historyContents,
                   response.candidates[0].content,
                   { 
                     role: 'user', 
@@ -3083,8 +3169,14 @@ function CoachPage({
 
           <div className="flex items-center justify-between mt-3">
             <div className="flex items-center gap-4">
-              <ImageIcon size={22} className="text-muted hover:text-accent transition-all cursor-pointer" onClick={() => fileInputRef.current?.click()} />
-              <Camera size={22} className="text-muted hover:text-accent transition-all cursor-pointer" onClick={() => fileInputRef.current?.click()} />
+              <Plus size={22} className="text-muted hover:text-accent transition-all cursor-pointer" onClick={() => fileInputRef.current?.click()} />
+              <Camera size={22} className="text-muted hover:text-accent transition-all cursor-pointer" onClick={() => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'image/*';
+                input.onchange = (e) => handleFileUpload(e as any, true);
+                input.click();
+              }} />
               <Mic 
                 size={22} 
                 className={`transition-all cursor-pointer ${isRecording ? 'text-red-500 animate-pulse' : 'text-muted hover:text-accent'}`} 
@@ -3113,7 +3205,7 @@ function CoachPage({
             type="file" 
             ref={fileInputRef}
             onChange={handleFileUpload}
-            accept="image/*,video/*,audio/*,application/pdf,text/plain"
+            accept="image/*,audio/*,application/pdf,text/plain"
             multiple
             className="hidden"
           />
@@ -3136,7 +3228,7 @@ function ProfilePage({
   setNotification
 }: { 
   profile: UserProfile | null; 
-  onUpdate: (data: any) => Promise<void>; 
+  onUpdate: (data: any, photoFile?: File) => Promise<void>; 
   onLogout: () => void;
   setActiveTab: (tab: any) => void;
   onExportData: () => void;
@@ -3251,7 +3343,7 @@ function ProfilePage({
     setIsEditing(false);
   };
 
-  const handleSaveProfile = async () => {
+  const handleSaveProfile = async (photoFile?: File) => {
     setIsSaving(true);
     try {
       await onUpdate({
@@ -3259,7 +3351,7 @@ function ProfilePage({
         age: age ? Number(age) : null,
         gender: gender,
         goal: goal
-      });
+      }, photoFile);
       setNotification({ show: true, title: 'Сохранено', message: 'Профиль обновлён ✓' });
       setIsEditing(false);
     } catch (error) {
@@ -3269,14 +3361,24 @@ function ProfilePage({
     }
   };
 
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} className="space-y-8 pb-12">
       <div className="flex items-center gap-4 mb-8">
-        <div className="w-16 h-16 bg-accent/10 rounded-3xl flex items-center justify-center text-accent overflow-hidden">
-          {profile?.photoURL ? (
+        <div className="relative w-16 h-16 bg-accent/10 rounded-3xl flex items-center justify-center text-accent overflow-hidden">
+          {photoFile ? (
+            <img src={URL.createObjectURL(photoFile)} alt="Profile" className="w-full h-full object-cover" />
+          ) : profile?.photoURL ? (
             <img src={profile.photoURL} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
           ) : (
             <UserIcon size={32} />
+          )}
+          {isEditing && (
+            <label className="absolute inset-0 bg-black/40 flex items-center justify-center cursor-pointer">
+              <Camera size={20} className="text-white" />
+              <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files && setPhotoFile(e.target.files[0])} />
+            </label>
           )}
         </div>
         <div>
@@ -3387,7 +3489,7 @@ function ProfilePage({
               Отмена
             </button>
             <button 
-              onClick={handleSaveProfile}
+              onClick={() => handleSaveProfile(photoFile || undefined)}
               disabled={isSaving}
               className="flex-1 py-3 bg-accent text-white font-bold rounded-2xl shadow-lg hover:bg-accent-2 transition-all flex items-center justify-center gap-2"
             >
