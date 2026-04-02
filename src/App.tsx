@@ -37,6 +37,7 @@ import {
   Sparkles,
   MessageSquare,
   ImageIcon,
+  Send,
   Camera,
   Settings,
   RotateCcw,
@@ -1824,12 +1825,12 @@ function AppContent() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`flex flex-col items-center justify-center w-14 h-14 transition-all ${isActive ? 'text-accent' : 'text-muted hover:text-accent/70'}`}
+              className={`flex flex-col items-center justify-center w-16 h-16 transition-all ${isActive ? 'text-accent' : 'text-muted hover:text-accent/70'}`}
             >
-              <div className={`relative flex items-center justify-center w-8 h-8 rounded-xl mb-1 transition-all ${isActive ? 'bg-accent/10' : ''}`}>
-                <Icon size={18} strokeWidth={isActive ? 2.5 : 2} />
+              <div className={`relative flex items-center justify-center w-8 h-8 rounded-xl mb-1 transition-all`}>
+                <Icon size={24} strokeWidth={isActive ? 2.5 : 1.5} />
               </div>
-              <span className={`text-[8px] font-bold uppercase tracking-wider ${isActive ? 'text-accent' : 'text-muted'}`}>
+              <span className={`text-[10px] font-bold uppercase tracking-wider ${isActive ? 'text-accent' : 'text-muted'}`}>
                 {tab.label}
               </span>
             </button>
@@ -2964,17 +2965,17 @@ function CoachPage({
           e.preventDefault();
           handleSend();
         }}
-        className="space-y-3"
+        className="bg-surface border-2 border-border rounded-3xl shadow-lg p-4 mx-0"
       >
         {attachedFiles.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+          <div className="flex gap-2 overflow-x-auto pb-3 no-scrollbar">
             {attachedFiles.map((f, idx) => (
               <div key={idx} className="relative flex-shrink-0">
                 {f.mimeType.startsWith('image/') ? (
-                  <img src={`data:${f.mimeType};base64,${f.data}`} alt="Preview" className="h-20 w-20 object-cover rounded-2xl border-2 border-accent shadow-lg" />
+                  <img src={`data:${f.mimeType};base64,${f.data}`} alt="Preview" className="h-16 w-16 object-cover rounded-2xl border-2 border-accent shadow-sm" />
                 ) : (
-                  <div className="h-20 w-20 bg-surface border-2 border-accent rounded-2xl flex flex-col items-center justify-center p-2 shadow-lg">
-                    {f.mimeType.startsWith('video/') ? <Camera size={24} className="text-accent" /> : <BookOpen size={24} className="text-accent" />}
+                  <div className="h-16 w-16 bg-surface border-2 border-accent rounded-2xl flex flex-col items-center justify-center p-2 shadow-sm">
+                    {f.mimeType.startsWith('video/') ? <Camera size={20} className="text-accent" /> : <BookOpen size={20} className="text-accent" />}
                     <span className="text-[8px] font-bold truncate w-full text-center mt-1">{f.name}</span>
                   </div>
                 )}
@@ -2983,17 +2984,17 @@ function CoachPage({
                   onClick={() => setAttachedFiles(prev => prev.filter((_, i) => i !== idx))}
                   className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md"
                 >
-                  <X size={12} />
+                  <X size={10} />
                 </button>
               </div>
             ))}
           </div>
         )}
         
-        <div className="relative">
+        <div className="flex flex-col">
           {isRecording ? (
-            <div className="w-full py-3 pl-20 pr-14 bg-red-50 border-2 border-red-200 rounded-xl flex items-center shadow-sm">
-              <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse mr-2"></div>
+            <div className="w-full py-2 bg-red-50/50 rounded-xl flex items-center mb-2">
+              <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse mx-3"></div>
               <span className="text-red-500 font-bold font-mono text-sm">
                 {Math.floor(recordingTime / 60).toString().padStart(2, '0')}:
                 {(recordingTime % 60).toString().padStart(2, '0')}
@@ -3001,29 +3002,53 @@ function CoachPage({
               <span className="ml-2 text-red-400 text-[10px] uppercase tracking-widest font-bold">Запись...</span>
             </div>
           ) : (
-            <input 
-              type="text" 
+            <textarea 
               value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Спроси тренера или прикрепи файлы..."
-              className="w-full py-3.5 pl-20 pr-14 bg-surface border-2 border-border rounded-xl focus:border-accent focus:outline-none transition-all shadow-sm font-medium text-sm"
+              onChange={(e) => {
+                setInput(e.target.value);
+                e.target.style.height = 'auto';
+                e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+              }}
+              placeholder="Спроси что-нибудь..."
+              className="w-full bg-transparent outline-none resize-none text-[15px] text-text leading-relaxed min-h-[24px]"
+              rows={1}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
             />
           )}
-          <button 
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted hover:text-accent transition-all"
-          >
-            <PlusCircle size={20} />
-          </button>
-          <button 
-            type="button"
-            onClick={isRecording ? stopRecording : startRecording}
-            className={`absolute left-11 top-1/2 -translate-y-1/2 transition-all ${isRecording ? 'text-red-500 animate-pulse' : 'text-muted hover:text-accent'}`}
-            title={isRecording ? "Остановить запись" : "Записать голосовое"}
-          >
-            {isRecording ? <Square size={18} fill="currentColor" /> : <Mic size={20} />}
-          </button>
+
+          <div className="flex items-center justify-between mt-3">
+            <div className="flex items-center gap-4">
+              <ImageIcon size={22} className="text-muted hover:text-accent transition-all cursor-pointer" onClick={() => fileInputRef.current?.click()} />
+              <Camera size={22} className="text-muted hover:text-accent transition-all cursor-pointer" onClick={() => fileInputRef.current?.click()} />
+              <Mic 
+                size={22} 
+                className={`transition-all cursor-pointer ${isRecording ? 'text-red-500 animate-pulse' : 'text-muted hover:text-accent'}`} 
+                onClick={isRecording ? stopRecording : startRecording} 
+              />
+            </div>
+            <div className="flex items-center">
+              <Trash2 
+                size={20} 
+                className="text-muted hover:text-red-400 transition-all cursor-pointer mr-2" 
+                onClick={() => {
+                  setInput('');
+                  setAttachedFiles([]);
+                }} 
+              />
+              <button 
+                type="submit"
+                disabled={isLoading || (!input.trim() && attachedFiles.length === 0 && !isRecording)}
+                className="w-12 h-12 rounded-2xl bg-accent flex items-center justify-center shadow-md shadow-accent/30 active:scale-95 transition-all disabled:opacity-50"
+              >
+                {isRecording ? <Square size={20} className="text-white" fill="currentColor" onClick={(e) => { e.preventDefault(); stopRecording(); handleSend(); }} /> : <Send size={20} className="text-white" />}
+              </button>
+            </div>
+          </div>
           <input 
             type="file" 
             ref={fileInputRef}
@@ -3032,13 +3057,6 @@ function CoachPage({
             multiple
             className="hidden"
           />
-          <button 
-            type="submit"
-            disabled={isLoading || (!input.trim() && attachedFiles.length === 0)}
-            className="absolute right-1.5 top-1.5 bottom-1.5 px-3 bg-accent text-white rounded-lg shadow-lg active:scale-95 disabled:opacity-50 transition-all"
-          >
-            <MessageSquare size={18} />
-          </button>
         </div>
       </form>
     </motion.div>
@@ -3758,10 +3776,7 @@ function ProgressPage({
     const m1 = measurements.find(m => m.id === selectedMeasure1);
     const m2 = measurements.find(m => m.id === selectedMeasure2);
     
-    if (!m1?.photos?.length || !m2?.photos?.length) {
-      setAnalysisError("Выберите замеры с фотографиями");
-      return;
-    }
+    if (!m1 || !m2) return;
 
     setIsAnalyzing(true);
     setAnalysisError(null);
@@ -3770,8 +3785,11 @@ function ProgressPage({
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       
-      const getBase64 = async (url: string) => {
-        const response = await fetch(url);
+      const getBase64 = async (urlOrData: string) => {
+        if (urlOrData.startsWith('data:image')) {
+          return urlOrData.split(',')[1];
+        }
+        const response = await fetch(urlOrData);
         const blob = await response.blob();
         return new Promise<string>((resolve) => {
           const reader = new FileReader();
@@ -3780,20 +3798,30 @@ function ProgressPage({
         });
       };
 
-      const photos1 = await Promise.all(m1.photos.map(url => getBase64(url)));
-      const photos2 = await Promise.all(m2.photos.map(url => getBase64(url)));
+      const hasPhotos = m1.photos?.length && m2.photos?.length;
+      let photos1: string[] = [];
+      let photos2: string[] = [];
 
-      const prompt = `Проанализируй прогресс по фотографиям тела. 
-      Замер 1 (до): Дата ${format(new Date(m1.date), 'd MMMM yyyy', { locale: ru })}, Вес ${m1.weight}кг.
-      Замер 2 (после): Дата ${format(new Date(m2.date), 'd MMMM yyyy', { locale: ru })}, Вес ${m2.weight}кг.
+      if (hasPhotos) {
+        photos1 = await Promise.all(m1.photos!.map(url => getBase64(url)));
+        photos2 = await Promise.all(m2.photos!.map(url => getBase64(url)));
+      }
+
+      const prompt = `Проанализируй прогресс между двумя замерами.
       
-      Сравни визуальные изменения (мышечный рельеф, осанка, объемы). Дай профессиональную оценку прогресса и рекомендации по дальнейшим тренировкам и питанию. Отвечай на русском языке в стиле фитнес-коуча. Используй Markdown для форматирования.`;
+      Замер 1 (до): Дата ${format(new Date(m1.date), 'd MMMM yyyy', { locale: ru })}, Вес ${m1.weight || 'нет данных'} кг, Жир ${m1.fat || 'нет данных'}%, Мышцы ${m1.muscle || 'нет данных'} кг.
+      Замер 2 (после): Дата ${format(new Date(m2.date), 'd MMMM yyyy', { locale: ru })}, Вес ${m2.weight || 'нет данных'} кг, Жир ${m2.fat || 'нет данных'}%, Мышцы ${m2.muscle || 'нет данных'} кг.
+      
+      ${hasPhotos ? 'Я также прикрепил фото "До" и "После". Сравни их визуально и отметь изменения в композиции тела, рельефе и пропорциях.' : 'Фотографии для визуального сравнения недоступны. Проанализируй только цифровые показатели.'}
+      
+      Дай профессиональную оценку прогресса и рекомендации по дальнейшим тренировкам и питанию. Отвечай на русском языке в стиле фитнес-коуча. Используй Markdown для форматирования.`;
 
-      const parts = [
-        { text: prompt },
-        ...photos1.map(data => ({ inlineData: { data, mimeType: 'image/jpeg' } })),
-        ...photos2.map(data => ({ inlineData: { data, mimeType: 'image/jpeg' } }))
-      ];
+      const parts: any[] = [{ text: prompt }];
+
+      if (hasPhotos) {
+        parts.push(...photos1.map(data => ({ inlineData: { data, mimeType: 'image/jpeg' } })));
+        parts.push(...photos2.map(data => ({ inlineData: { data, mimeType: 'image/jpeg' } })));
+      }
 
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
@@ -4327,7 +4355,7 @@ function ProgressPage({
             </div>
 
             {/* AI Analysis */}
-            <div className="bg-surface border-2 border-border rounded-[32px] p-6 shadow-sm space-y-6">
+            <div className="bg-surface border-2 border-border rounded-[32px] p-6 shadow-sm space-y-6 overflow-visible">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-accent/10 rounded-2xl flex items-center justify-center text-accent">
                   <Sparkles size={20} />
@@ -4347,7 +4375,10 @@ function ProgressPage({
                   >
                     <span>
                       {selectedMeasure1 
-                        ? format(new Date(measurements.find(m => m.id === selectedMeasure1)!.date), 'd MMM yyyy', { locale: ru }) 
+                        ? (() => {
+                            const m = measurements.find(m => m.id === selectedMeasure1);
+                            return m ? `${format(new Date(m.date), 'd MMMM yyyy', { locale: ru })}${m.weight ? ` · ${m.weight} кг` : ''}` : 'Выбрать...';
+                          })()
                         : 'Выбрать...'}
                     </span>
                     <ChevronDown size={16} className={`transition-transform ${isDropdown1Open ? 'rotate-180' : ''}`} />
@@ -4358,21 +4389,25 @@ function ProgressPage({
                         initial={{ opacity: 0, y: -10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -10 }}
-                        className="absolute top-full left-0 right-0 mt-1 bg-surface border-2 border-border rounded-2xl shadow-xl z-50 overflow-hidden"
+                        className="absolute top-full left-0 right-0 mt-1 bg-surface border-2 border-border rounded-2xl shadow-xl z-[9999] overflow-hidden"
                       >
                         <div className="max-h-[200px] overflow-y-auto">
-                          {measurements.filter(m => m.photos?.length).map(m => (
-                            <div 
-                              key={m.id} 
-                              onClick={() => {
-                                setSelectedMeasure1(m.id!);
-                                setIsDropdown1Open(false);
-                              }}
-                              className="p-4 text-[13px] font-bold hover:bg-accent/10 transition-all cursor-pointer border-b border-border last:border-0"
-                            >
-                              {format(new Date(m.date), 'd MMM yyyy', { locale: ru })} ({m.weight} кг)
-                            </div>
-                          ))}
+                          {measurements.length === 0 ? (
+                            <div className="p-4 text-[13px] font-bold text-muted text-center">Нет замеров</div>
+                          ) : (
+                            [...measurements].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(m => (
+                              <div 
+                                key={m.id} 
+                                onClick={() => {
+                                  setSelectedMeasure1(m.id!);
+                                  setIsDropdown1Open(false);
+                                }}
+                                className="p-4 text-[13px] font-bold hover:bg-accent/10 transition-all cursor-pointer border-b border-border last:border-0"
+                              >
+                                {format(new Date(m.date), 'd MMMM yyyy', { locale: ru })}{m.weight ? ` · ${m.weight} кг` : ''}
+                              </div>
+                            ))
+                          )}
                         </div>
                       </motion.div>
                     )}
@@ -4387,7 +4422,10 @@ function ProgressPage({
                   >
                     <span>
                       {selectedMeasure2 
-                        ? format(new Date(measurements.find(m => m.id === selectedMeasure2)!.date), 'd MMM yyyy', { locale: ru }) 
+                        ? (() => {
+                            const m = measurements.find(m => m.id === selectedMeasure2);
+                            return m ? `${format(new Date(m.date), 'd MMMM yyyy', { locale: ru })}${m.weight ? ` · ${m.weight} кг` : ''}` : 'Выбрать...';
+                          })()
                         : 'Выбрать...'}
                     </span>
                     <ChevronDown size={16} className={`transition-transform ${isDropdown2Open ? 'rotate-180' : ''}`} />
@@ -4398,21 +4436,25 @@ function ProgressPage({
                         initial={{ opacity: 0, y: -10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -10 }}
-                        className="absolute top-full left-0 right-0 mt-1 bg-surface border-2 border-border rounded-2xl shadow-xl z-50 overflow-hidden"
+                        className="absolute top-full left-0 right-0 mt-1 bg-surface border-2 border-border rounded-2xl shadow-xl z-[9999] overflow-hidden"
                       >
                         <div className="max-h-[200px] overflow-y-auto">
-                          {measurements.filter(m => m.photos?.length).map(m => (
-                            <div 
-                              key={m.id} 
-                              onClick={() => {
-                                setSelectedMeasure2(m.id!);
-                                setIsDropdown2Open(false);
-                              }}
-                              className="p-4 text-[13px] font-bold hover:bg-accent/10 transition-all cursor-pointer border-b border-border last:border-0"
-                            >
-                              {format(new Date(m.date), 'd MMM yyyy', { locale: ru })} ({m.weight} кг)
-                            </div>
-                          ))}
+                          {measurements.length === 0 ? (
+                            <div className="p-4 text-[13px] font-bold text-muted text-center">Нет замеров</div>
+                          ) : (
+                            [...measurements].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(m => (
+                              <div 
+                                key={m.id} 
+                                onClick={() => {
+                                  setSelectedMeasure2(m.id!);
+                                  setIsDropdown2Open(false);
+                                }}
+                                className="p-4 text-[13px] font-bold hover:bg-accent/10 transition-all cursor-pointer border-b border-border last:border-0"
+                              >
+                                {format(new Date(m.date), 'd MMMM yyyy', { locale: ru })}{m.weight ? ` · ${m.weight} кг` : ''}
+                              </div>
+                            ))
+                          )}
                         </div>
                       </motion.div>
                     )}
@@ -4423,13 +4465,24 @@ function ProgressPage({
               <div className="grid grid-cols-2 gap-3">
                 {[selectedMeasure1, selectedMeasure2].map((id, idx) => {
                   const m = measurements.find(item => item.id === id);
-                  if (!m) return <div key={idx} className="aspect-square bg-surface-2 rounded-2xl border-2 border-dashed border-border" />;
+                  if (!m) return <div key={idx} className="aspect-square bg-surface-2/50 rounded-2xl border-2 border-dashed border-border" />;
                   return (
-                    <div key={idx} className="bg-surface-2 rounded-2xl border-2 border-border p-2 space-y-2">
-                      <img src={m.photos?.[0]} alt="Preview" className="w-full aspect-square object-cover rounded-xl" />
+                    <div key={idx} className="bg-surface-2/50 rounded-2xl p-3 space-y-2">
+                      {m.photos && m.photos.length > 0 ? (
+                        <img src={m.photos[0]} alt="Preview" className="w-full aspect-square object-cover rounded-xl mb-2" />
+                      ) : (
+                        <div className="w-full aspect-square bg-surface rounded-xl flex items-center justify-center mb-2">
+                          <Camera size={24} className="text-muted/30" />
+                        </div>
+                      )}
                       <div className="text-center">
-                        <div className="text-[10px] font-bold text-text">{format(new Date(m.date), 'd MMM yyyy', { locale: ru })}</div>
-                        <div className="text-[9px] text-muted font-bold uppercase">{m.weight} кг</div>
+                        <div className="text-[11px] font-bold text-text">{format(new Date(m.date), 'd MMMM yyyy', { locale: ru })}</div>
+                        {m.weight && <div className="text-[10px] text-muted">{m.weight} кг</div>}
+                        {(m.fat || m.muscle) && (
+                          <div className="text-[10px] text-accent">
+                            {m.fat && `Жир: ${m.fat}%`} {m.muscle && `Мышцы: ${m.muscle}кг`}
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
@@ -4490,9 +4543,11 @@ function ProgressPage({
 }
 
 function StatItem({ value, label }: { value: any; label: string }) {
+  const valueStr = String(value);
+  const valueSize = valueStr.length > 5 ? 'text-xl' : 'text-2xl';
   return (
-    <div className="bg-surface border-2 border-border rounded-3xl p-5 text-center shadow-sm">
-      <div className="font-display text-4xl text-accent font-bold leading-none mb-2">{value}</div>
+    <div className="bg-surface border-2 border-border rounded-3xl p-5 text-center shadow-sm flex flex-col justify-center min-h-[100px]">
+      <div className={`font-display ${valueSize} text-accent font-bold leading-none mb-2 break-words`}>{value}</div>
       <div className="text-[10px] text-muted uppercase font-bold tracking-wider">{label}</div>
     </div>
   );
@@ -4783,12 +4838,13 @@ function WeightPage({
   const [isAddingNew, setIsAddingNew] = useState(false);
   const [photos, setPhotos] = useState<string[]>([]);
   const [uploadingIndices, setUploadingIndices] = useState<number[]>([]);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [viewerPhoto, setViewerPhoto] = useState<{ urls: string[], index: number } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const currentUploadIndex = useRef<number | null>(null);
 
-  const compressImage = (file: File): Promise<Blob> => {
+  const compressImage = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (event) => {
@@ -4815,10 +4871,7 @@ function WeightPage({
           canvas.height = height;
           const ctx = canvas.getContext('2d');
           ctx?.drawImage(img, 0, 0, width, height);
-          canvas.toBlob((blob) => {
-            if (blob) resolve(blob);
-            else reject(new Error('Canvas to Blob failed'));
-          }, 'image/jpeg', 0.8);
+          resolve(canvas.toDataURL('image/jpeg', 0.7));
         };
         img.onerror = () => reject(new Error('Image loading failed'));
         img.src = event.target?.result as string;
@@ -4829,6 +4882,7 @@ function WeightPage({
   };
 
   const handlePhotoClick = (index: number) => {
+    setUploadError(null);
     currentUploadIndex.current = index;
     fileInputRef.current?.click();
   };
@@ -4839,23 +4893,19 @@ function WeightPage({
 
     const index = currentUploadIndex.current;
     setUploadingIndices(prev => [...prev, index]);
+    setUploadError(null);
 
     try {
-      const compressedBlob = await compressImage(file);
-      const timestamp = Date.now();
-      const storagePath = `photos/${user.uid}/${timestamp}_${index}.jpg`;
-      const photoRef = ref(storage, storagePath);
-      
-      await uploadBytes(photoRef, compressedBlob);
-      const downloadUrl = await getDownloadURL(photoRef);
+      const base64String = await compressImage(file);
       
       setPhotos(prev => {
         const newPhotos = [...prev];
-        newPhotos[index] = downloadUrl;
+        newPhotos[index] = base64String;
         return newPhotos;
       });
     } catch (error) {
       console.error("Upload failed:", error);
+      setUploadError('Ошибка загрузки фото. Попробуйте другое.');
     } finally {
       setUploadingIndices(prev => prev.filter(i => i !== index));
       currentUploadIndex.current = null;
@@ -4864,20 +4914,11 @@ function WeightPage({
   };
 
   const removePhoto = async (index: number) => {
-    const url = photos[index];
-    if (!url) return;
-
-    try {
-      const photoRef = ref(storage, url);
-      await deleteObject(photoRef);
-      setPhotos(prev => {
-        const newPhotos = [...prev];
-        newPhotos.splice(index, 1);
-        return newPhotos;
-      });
-    } catch (error) {
-      console.error("Delete failed:", error);
-    }
+    setPhotos(prev => {
+      const newPhotos = [...prev];
+      newPhotos.splice(index, 1);
+      return newPhotos;
+    });
   };
 
   const handleSave = () => {
@@ -4943,6 +4984,52 @@ function WeightPage({
     setTimeout(() => setSaveSuccess(false), 3000);
   };
 
+  const [editPhotos, setEditPhotos] = useState<string[]>([]);
+  const [editingUploadIndices, setEditingUploadIndices] = useState<number[]>([]);
+  
+  const editFileInputRef = useRef<HTMLInputElement>(null);
+  const currentEditUploadIndex = useRef<number | null>(null);
+
+  const handleEditPhotoClick = (index: number) => {
+    setUploadError(null);
+    currentEditUploadIndex.current = index;
+    editFileInputRef.current?.click();
+  };
+
+  const handleEditFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || currentEditUploadIndex.current === null || !user) return;
+
+    const index = currentEditUploadIndex.current;
+    setEditingUploadIndices(prev => [...prev, index]);
+    setUploadError(null);
+
+    try {
+      const base64String = await compressImage(file);
+      
+      setEditPhotos(prev => {
+        const newPhotos = [...prev];
+        newPhotos[index] = base64String;
+        return newPhotos;
+      });
+    } catch (error) {
+      console.error("Upload failed:", error);
+      setUploadError('Ошибка загрузки фото. Попробуйте другое.');
+    } finally {
+      setEditingUploadIndices(prev => prev.filter(i => i !== index));
+      currentEditUploadIndex.current = null;
+      if (editFileInputRef.current) editFileInputRef.current.value = '';
+    }
+  };
+
+  const removeEditPhoto = async (index: number) => {
+    setEditPhotos(prev => {
+      const newPhotos = [...prev];
+      newPhotos.splice(index, 1);
+      return newPhotos;
+    });
+  };
+
   const handleStartEdit = (m: WeightMeasurement) => {
     setEditingId(m.id || null);
     setEditDate(m.date.split('T')[0]);
@@ -4971,6 +5058,7 @@ function WeightPage({
     setEditHips(m.hips?.toString() || '');
     setEditThigh(m.thigh?.toString() || '');
     setEditBicep(m.bicep?.toString() || '');
+    setEditPhotos(m.photos ? [...m.photos] : []);
   };
 
   const handleSaveEdit = () => {
@@ -5001,18 +5089,14 @@ function WeightPage({
       waistWidest: editWaistWidest ? Number(editWaistWidest) : null,
       hips: editHips ? Number(editHips) : null,
       thigh: editThigh ? Number(editThigh) : null,
-      bicep: editBicep ? Number(editBicep) : null
+      bicep: editBicep ? Number(editBicep) : null,
+      photos: editPhotos.filter(p => !!p)
     });
     setEditingId(null);
   };
 
   return (
-    <motion.div 
-      initial={{ opacity: 0, y: 20 }} 
-      animate={{ opacity: 1, y: 0 }} 
-      exit={{ opacity: 0, y: -20 }} 
-      className="space-y-6"
-    >
+    <div className="space-y-6">
       <div className="bg-surface p-8 rounded-[40px] border border-border shadow-sm">
         <div className="flex items-center gap-3 mb-6">
           <div className="w-10 h-10 bg-accent/10 rounded-2xl flex items-center justify-center text-accent">
@@ -5025,13 +5109,10 @@ function WeightPage({
         </div>
         
         <div className="space-y-8">
-          <AnimatePresence mode="wait">
+          <div>
             {!isAddingNew ? (
-              <motion.button 
+              <button 
                 key="add-button"
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
                 onClick={() => setIsAddingNew(true)}
                 className="w-full py-6 border-2 border-dashed border-border rounded-[32px] flex flex-col items-center justify-center gap-3 text-muted hover:border-accent hover:text-accent hover:bg-accent/5 transition-all group"
               >
@@ -5039,15 +5120,9 @@ function WeightPage({
                   <Plus size={24} className="group-hover:scale-110 transition-transform" />
                 </div>
                 <span className="text-[10px] font-bold uppercase tracking-widest">Добавить новый замер</span>
-              </motion.button>
+              </button>
             ) : (
-              <motion.div 
-                key="form"
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="overflow-hidden"
-              >
+              <div className="overflow-hidden">
                 <div className="space-y-6 pt-2">
                   <div className="flex items-center justify-between mb-2">
                     <h4 className="text-[10px] text-muted uppercase font-bold tracking-widest">Новый замер</h4>
@@ -5188,9 +5263,7 @@ function WeightPage({
                               className="w-full h-full bg-surface-2 border-2 border-dashed border-border rounded-2xl flex flex-col items-center justify-center gap-1 cursor-pointer hover:border-accent/50 transition-all"
                             >
                               {uploadingIndices.includes(i) ? (
-                                <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}>
-                                  <Dumbbell size={20} className="text-accent" />
-                                </motion.div>
+                                <span className="text-[10px] text-accent font-bold uppercase">Загрузка...</span>
                               ) : (
                                 <>
                                   <Camera size={20} className="text-muted" />
@@ -5202,6 +5275,9 @@ function WeightPage({
                         </div>
                       ))}
                     </div>
+                    {uploadError && (
+                      <div className="text-red-500 text-[10px] font-bold uppercase mt-2">{uploadError}</div>
+                    )}
                     <input 
                       type="file" 
                       ref={fileInputRef} 
@@ -5218,38 +5294,33 @@ function WeightPage({
                     Сохранить замер
                   </button>
                 </div>
-              </motion.div>
+              </div>
             )}
-          </AnimatePresence>
+          </div>
 
-        <AnimatePresence>
           {saveSuccess && (
-            <motion.div 
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              className="text-center text-emerald-500 text-xs font-bold"
-            >
+            <div className="text-center text-emerald-500 text-xs font-bold">
               ✅ Замер успешно сохранен!
-            </motion.div>
+            </div>
           )}
-        </AnimatePresence>
+        </div>
       </div>
 
-      <div className="space-y-6">
-        <h4 className="text-[10px] text-muted uppercase font-bold tracking-widest px-1">История замеров</h4>
+      <div className="bg-surface p-8 rounded-[40px] border border-border shadow-sm">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 bg-accent/10 rounded-2xl flex items-center justify-center text-accent">
+            <History size={20} />
+          </div>
+          <h3 className="text-lg font-display font-bold text-accent">История</h3>
+        </div>
+        
         {measurements.length === 0 ? (
-          <div className="text-center py-16 bg-surface rounded-3xl border-2 border-dashed border-border text-muted text-sm font-medium">Нет записей. Добавь первый! 📏</div>
+          <div className="text-center py-8 text-muted text-sm font-medium">Нет сохраненных замеров</div>
         ) : (
           <div className="space-y-3">
-            <AnimatePresence initial={false}>
               {[...measurements].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(m => (
-                <motion.div 
+                <div 
                   key={m.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  layout
                   className="p-5 bg-surface-2/50 border-2 border-border rounded-3xl shadow-sm hover:border-accent/30 transition-all space-y-3"
                 >
                   {editingId === m.id ? (
@@ -5347,7 +5418,63 @@ function WeightPage({
                         <input type="number" value={editBicep || ''} onChange={(e) => setEditBicep(e.target.value)} className="w-full bg-surface border border-border p-2 rounded-xl text-xs font-bold" />
                       </div>
                     </div>
-                    <div className="flex gap-2">
+
+                    {/* Edit Photos */}
+                    <div className="space-y-3 mt-4">
+                      <label className="text-[11px] text-muted uppercase font-bold tracking-wider ml-1">Фотографии</label>
+                      <div className="grid grid-cols-3 gap-3">
+                        {[0, 1, 2].map((index) => {
+                          const labels = ['Фас', 'Боком', 'Спина'];
+                          return (
+                            <div key={index} className="space-y-1">
+                              <div className="text-[9px] text-muted text-center font-bold uppercase">{labels[index]}</div>
+                              <div 
+                                onClick={() => !editPhotos[index] && handleEditPhotoClick(index)}
+                                className={`aspect-[3/4] rounded-2xl border-2 flex flex-col items-center justify-center relative overflow-hidden transition-all ${
+                                  editPhotos[index] 
+                                    ? 'border-accent bg-surface' 
+                                    : 'border-dashed border-border bg-surface-2 hover:border-accent/50 hover:bg-accent/5 cursor-pointer'
+                                }`}
+                              >
+                                {editingUploadIndices.includes(index) ? (
+                                  <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}>
+                                    <Loader2 size={24} className="text-accent" />
+                                  </motion.div>
+                                ) : editPhotos[index] ? (
+                                  <>
+                                    <img src={editPhotos[index]} alt="Progress" className="w-full h-full object-cover" />
+                                    <button 
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        removeEditPhoto(index);
+                                      }}
+                                      className="absolute top-2 right-2 w-8 h-8 bg-black/50 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-red-500 transition-colors"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Camera size={24} className="text-muted/50 mb-2" />
+                                    <span className="text-[10px] font-bold text-muted/50 uppercase">Добавить</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {uploadError && <div className="text-red-500 text-xs text-center font-bold">{uploadError}</div>}
+                      <input 
+                        type="file" 
+                        ref={editFileInputRef} 
+                        className="hidden" 
+                        accept="image/*" 
+                        onChange={handleEditFileChange} 
+                      />
+                    </div>
+
+                    <div className="flex gap-2 mt-4">
                       <button onClick={handleSaveEdit} className="flex-1 py-2 bg-done text-white text-[10px] font-bold uppercase rounded-xl">Сохранить</button>
                       <button onClick={() => setEditingId(null)} className="flex-1 py-2 bg-surface-3 text-text text-[10px] font-bold uppercase rounded-xl">Отмена</button>
                     </div>
@@ -5403,9 +5530,8 @@ function WeightPage({
                     )}
                   </>
                 )}
-              </motion.div>
+              </div>
             ))}
-            </AnimatePresence>
           </div>
         )}
       </div>
@@ -5463,8 +5589,7 @@ function WeightPage({
       >
         Телесный прогресс <ChevronRight size={14} />
       </button>
-      </div>
-    </motion.div>
+    </div>
   );
 }
 
