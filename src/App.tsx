@@ -55,6 +55,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
+import { CustomDatePicker } from './components/CustomDatePicker';
 import { GoogleGenAI, Type, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { 
   LineChart, 
@@ -67,7 +68,7 @@ import {
   AreaChart, 
   Area 
 } from 'recharts';
-import { format, parseISO, subDays, isSameDay, startOfMonth, endOfMonth, differenceInDays, startOfWeek, subWeeks, subMonths, isWithinInterval, endOfWeek } from 'date-fns';
+import { format, parseISO, subDays, isSameDay, startOfMonth, endOfMonth, differenceInDays, startOfWeek, subWeeks, subMonths, isWithinInterval, endOfWeek, eachDayOfInterval, isSameMonth, addMonths } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { 
   auth, 
@@ -4407,11 +4408,9 @@ function ProgressPage({
                     {editingWorkoutId === w.id ? (
                       <div className="space-y-4">
                         <div className="grid grid-cols-2 gap-2">
-                          <input 
-                            type="date" 
+                          <CustomDatePicker 
                             value={editWorkoutDate}
-                            onChange={(e) => setEditWorkoutDate(e.target.value)}
-                            className="w-full bg-surface-2 border-2 border-border p-2 rounded-xl text-xs font-bold"
+                            onChange={(date) => setEditWorkoutDate(date)}
                           />
                           <select 
                             value={editWorkoutDay}
@@ -5310,12 +5309,10 @@ function WeightPage({
                   
                   <div className="grid grid-cols-1 gap-4">
                     <div>
-                      <label className="text-[10px] text-muted uppercase font-bold block mb-2 px-1">Дата замера</label>
-                      <input 
-                        type="date" 
-                        className="w-full bg-surface-2 border-2 border-border text-text p-3 rounded-xl text-sm font-bold outline-none focus:border-accent transition-all"
+                      <CustomDatePicker 
                         value={date || ''}
-                        onChange={(e) => setDate(e.target.value)}
+                        onChange={(newDate) => setDate(newDate)}
+                        label="Дата замера"
                       />
                     </div>
                   </div>
@@ -5501,8 +5498,7 @@ function WeightPage({
                   <div className="space-y-4">
                     <div className="grid grid-cols-3 gap-2">
                       <div className="col-span-3">
-                        <label className="text-[9px] text-muted uppercase font-bold ml-1">Дата</label>
-                        <input type="date" value={editDate || ''} onChange={(e) => setEditDate(e.target.value)} className="w-full bg-surface border border-border p-2 rounded-xl text-xs font-bold" />
+                        <CustomDatePicker value={editDate || ''} onChange={(newDate) => setEditDate(newDate)} label="Дата" />
                       </div>
                       <div className="col-span-3 border-b border-border pb-1 mt-2">
                         <span className="text-[9px] text-accent uppercase font-bold">Основные</span>
