@@ -205,202 +205,51 @@ const goalTranslations: Record<string, { label: string; color: string }> = {
 };
 
 // Program Data
-const PROGRAM: Record<string, { subtitle: string; isCardio?: boolean; exercises: any[] }> = {
+const PROGRAM: Record<string, { subtitle: string; isCardio?: boolean; exercises: any[] }> = {};
+
+const DEFAULT_PROGRAM: Record<string, { subtitle: string; isCardio?: boolean; exercises: any[] }> = {
   "День 1": {
-    "subtitle": "Ягодицы + Ноги",
+    "subtitle": "Блок 1 (Ноги, Плечи, Икры, Пресс)",
     "exercises": [
-      {
-        "name": "Ягодичный мостик со штангой",
-        "scheme": "4 × 12",
-        "sets": 4,
-        "tip": "⭐ Пауза 2 сек наверху! Старт 30-40 кг"
-      },
-      {
-        "name": "Болгарские сплит-приседания",
-        "scheme": "3 × 10 / нога",
-        "sets": 3,
-        "tip": "Корпус вперёд 30-45°, дави в пятку. Старт 5-8 кг"
-      },
-      {
-        "name": "Жим ногами высокая постановка",
-        "scheme": "3 × 12",
-        "sets": 3,
-        "tip": "Пятки высоко = акцент ягодицы. Старт 60-80 кг"
-      },
-      {
-        "name": "Румынская тяга",
-        "scheme": "3 × 10",
-        "sets": 3,
-        "tip": "Спина прямая, тянись тазом назад. Старт 25-35 кг"
-      },
-      {
-        "name": "Вакуум",
-        "scheme": "3 × 30 сек",
-        "sets": 3,
-        "tip": "Живот вваливается внутрь",
-        "bodyweight": true,
-        "unit": "сек"
-      }
+      { "name": "Приседания", "scheme": "3 × 15-20", "sets": 3, "tip": "Разминка 3 уровня обязательна!" },
+      { "name": "Жим гантелей стоя (армейский жим)", "scheme": "3 × 15-20", "sets": 3, "tip": "" },
+      { "name": "Выпады", "scheme": "3 × 15-20", "sets": 3, "tip": "" },
+      { "name": "Тяга штанги к подбородку", "scheme": "3 × 15-20", "sets": 3, "tip": "" },
+      { "name": "Подъем на носки", "scheme": "3 × 15-20", "sets": 3, "tip": "Если икры большие, можно пропустить" },
+      { "name": "Скручивания", "scheme": "3 × 15-20", "sets": 3, "tip": "", "bodyweight": true, "unit": "раз" }
     ]
   },
   "День 2": {
-    "subtitle": "Верх + Осанка",
+    "subtitle": "Блок 2 (Спина, Грудь, Руки)",
     "exercises": [
-      {
-        "name": "Жим гантелей сидя",
-        "scheme": "3 × 10",
-        "sets": 3,
-        "tip": "Старт 8-10 кг × 2"
-      },
-      {
-        "name": "Отжимания от пола / от колен",
-        "scheme": "3 × 12",
-        "sets": 3,
-        "tip": "Тонус груди + кор без перекачки передней дельты",
-        "bodyweight": true,
-        "unit": "раз"
-      },
-      {
-        "name": "Тяга верхнего блока широким хватом",
-        "scheme": "3 × 12",
-        "sets": 3,
-        "tip": "Плечи вниз, тяни к груди. Старт 25-35 кг"
-      },
-      {
-        "name": "Тяга гантели в наклоне",
-        "scheme": "3 × 10 / сторону",
-        "sets": 3,
-        "tip": "Спина параллельна полу. Старт 10-12 кг"
-      },
-      {
-        "name": "Face pulls",
-        "scheme": "3 × 20",
-        "sets": 3,
-        "tip": "⭐ Тяни к лбу! В конце разводи кулаки — лопатки сводятся. Минимальный вес"
-      },
-      {
-        "name": "Разводка в стороны",
-        "scheme": "3 × 15",
-        "sets": 3,
-        "tip": "Локоть чуть согнут. Старт 3-5 кг"
-      },
-      {
-        "name": "Мёртвый жук (Dead Bug)",
-        "scheme": "3 × 10 / сторону",
-        "sets": 3,
-        "tip": "Поясница намертво к полу! Выдох на движении",
-        "bodyweight": true,
-        "unit": "раз"
-      },
-      {
-        "name": "Планка",
-        "scheme": "3 × 45 сек",
-        "sets": 3,
-        "tip": "Дыши, не задерживай",
-        "bodyweight": true,
-        "unit": "сек"
-      }
+      { "name": "Тяга штанги в наклоне обратным хватом", "scheme": "3 × 15-20", "sets": 3, "tip": "Разминка 3 уровня обязательна!" },
+      { "name": "Жим штанги на горизонтальной скамье", "scheme": "3 × 15-20", "sets": 3, "tip": "" },
+      { "name": "Подтягивания обратным хватом / Гравитрон", "scheme": "3 × 15-20", "sets": 3, "tip": "Либо тяга вертикального блока (широкая рукоять)" },
+      { "name": "Жим гантелей под углом 30 градусов", "scheme": "3 × 15-20", "sets": 3, "tip": "" },
+      { "name": "Подъем штанги на бицепс", "scheme": "3 × 15-20", "sets": 3, "tip": "" },
+      { "name": "Разгибание руки в наклоне (трицепс)", "scheme": "3 × 15-20", "sets": 3, "tip": "" }
     ]
   },
   "День 3": {
-    "subtitle": "Задняя линия + Плечи",
+    "subtitle": "Блок 3 (Ноги, Плечи, Икры, Пресс)",
     "exercises": [
-      {
-        "name": "Становая тяга сумо",
-        "scheme": "4 × 8",
-        "sets": 4,
-        "tip": "⭐ Королева упражнений! Спина прямая, колени над носками. Старт 40-50 кг"
-      },
-      {
-        "name": "Сгибание ног в тренажёре",
-        "scheme": "3 × 15",
-        "sets": 3,
-        "tip": "Разгрузка поясницы после становой"
-      },
-      {
-        "name": "Сумо-приседания с гантелью",
-        "scheme": "3 × 12",
-        "sets": 3,
-        "tip": "Старт 12-16 кг"
-      },
-      {
-        "name": "Гиперэкстензия с весом",
-        "scheme": "3 × 15",
-        "sets": 3,
-        "tip": "Скруглённая спина = акцент на ягодицы. Старт 5-10 кг"
-      },
-      {
-        "name": "Тяга к подбородку широким хватом",
-        "scheme": "3 × 12",
-        "sets": 3,
-        "tip": "Визуально сужает талию! Старт 15-20 кг"
-      },
-      {
-        "name": "Махи гантелями в наклоне",
-        "scheme": "3 × 15",
-        "sets": 3,
-        "tip": "Задняя дельта — исправляет сутулость. Старт 4-6 кг"
-      },
-      {
-        "name": "Планка боковая",
-        "scheme": "3 × 30 сек / сторону",
-        "sets": 3,
-        "bodyweight": true,
-        "unit": "сек"
-      }
+      { "name": "Жим платформы", "scheme": "3 × 15-20", "sets": 3, "tip": "Разминка 3 уровня обязательна!" },
+      { "name": "Разведение через стороны", "scheme": "3 × 15-20", "sets": 3, "tip": "" },
+      { "name": "Мертвая тяга / Разгибание ног", "scheme": "3 × 15-20", "sets": 3, "tip": "Дамы: Мертвая тяга. Юноши: Разгибание ног." },
+      { "name": "Тяга с верхнего блока к подбородку", "scheme": "3 × 15-20", "sets": 3, "tip": "" },
+      { "name": "Икры сидя", "scheme": "3 × 15-20", "sets": 3, "tip": "Если икры большие, можно пропустить" },
+      { "name": "Книжка (пресс)", "scheme": "3 × 15-20", "sets": 3, "tip": "", "bodyweight": true, "unit": "раз" }
     ]
   },
-  "Кардио 1": {
-    "subtitle": "Горы + Жизнь",
-    "isCardio": true,
+  "День 4": {
+    "subtitle": "Блок 4 (Спина, Грудь, Руки)",
     "exercises": [
-      {
-        "name": "Ходьба",
-        "scheme": "30-60 мин · пульс 115-130",
-        "sets": 1,
-        "isCardio": true,
-        "fields": ["мин", "км", "пульс"]
-      },
-      {
-        "name": "Растяжка",
-        "scheme": "10 мин",
-        "sets": 1,
-        "isCardio": true,
-        "fields": ["мин"]
-      }
-    ]
-  },
-  "Кардио 2": {
-    "subtitle": "Активное восстановление",
-    "isCardio": true,
-    "exercises": [
-      {
-        "name": "Эллипс / Велосипед",
-        "scheme": "30-45 мин",
-        "sets": 1,
-        "isCardio": true,
-        "fields": ["мин", "пульс"]
-      }
-    ]
-  },
-  "Кардио 3": {
-    "subtitle": "Горы + Отдых",
-    "isCardio": true,
-    "exercises": [
-      {
-        "name": "Ходьба",
-        "scheme": "30-60 мин · спокойный темп",
-        "sets": 1,
-        "isCardio": true,
-        "fields": ["мин", "км", "пульс"]
-      },
-      {
-        "name": "Растяжка всего тела",
-        "scheme": "15 мин",
-        "sets": 1,
-        "isCardio": true,
-        "fields": ["мин"]
-      }
+      { "name": "Тяга вертикального блока перед собой (узкая рукоятка)", "scheme": "3 × 15-20", "sets": 3, "tip": "" },
+      { "name": "Жим узким хватом", "scheme": "3 × 15-20", "sets": 3, "tip": "" },
+      { "name": "Тяга горизонтального блока (узкая рукоятка)", "scheme": "3 × 15-20", "sets": 3, "tip": "" },
+      { "name": "Отжимания от пола", "scheme": "3 × 15-20", "sets": 3, "tip": "", "bodyweight": true, "unit": "раз" },
+      { "name": "Отжимания на брусьях / от скамьи (обратные)", "scheme": "3 × 15-20", "sets": 3, "tip": "", "bodyweight": true, "unit": "раз" },
+      { "name": "Подъем гантелей на бицепс стоя", "scheme": "3 × 15-20", "sets": 3, "tip": "" }
     ]
   }
 };
@@ -592,6 +441,7 @@ function AppContent() {
   } | null>(null);
   
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [profileEditMode, setProfileEditMode] = useState(false);
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -966,16 +816,22 @@ function AppContent() {
       }
       
       // Save updated state
+      const isResettingToDefault = newData === DEFAULT_PROGRAM;
+      
       await saveWorkoutState({
         currentDay: updatedDay,
-        // If program changed significantly, we might want to clear progress
-        // but for now let's just keep it if the day still exists
-        ...(updatedDay !== currentDay ? { 
+        ...(isResettingToDefault || updatedDay !== currentDay ? { 
           checkedExercises: { ...checkedExercises, [updatedDay]: [] }, 
           currentSets: { ...currentSets, [updatedDay]: {} }, 
           currentNotes: { ...currentNotes, [updatedDay]: {} } 
         } : {})
       });
+      
+      if (isResettingToDefault) {
+        setCheckedExercises({});
+        setCurrentSets({});
+        setCurrentNotes({});
+      }
 
       // Removed alert for better mobile/iframe compatibility
     } catch (error) {
@@ -1136,6 +992,8 @@ function AppContent() {
     };
   }, [user]);
 
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+
   const syncUserProfile = async (currentUser: User) => {
     const userRef = doc(db, 'users', currentUser.uid);
     try {
@@ -1152,6 +1010,7 @@ function AppContent() {
         updates.createdAt = new Date().toISOString();
       } else {
         // If name or photo are missing in Firestore but available in Auth, restore them
+        // Use loose check (null, undefined, or empty string)
         if (!userData.displayName && currentUser.displayName) updates.displayName = currentUser.displayName;
         if (!userData.photoURL && currentUser.photoURL) updates.photoURL = currentUser.photoURL;
         // Always ensure email is up to date
@@ -1169,7 +1028,6 @@ function AppContent() {
       }
     } catch (error) {
       console.error("Failed to sync user profile:", error);
-      // Don't throw here, let the app continue
     }
   };
 
@@ -1243,10 +1101,14 @@ function AppContent() {
   };
 
   const handleLogin = async () => {
+    if (isLoggingIn) return;
+    setIsLoggingIn(true);
     try {
       await signInWithPopup(auth, googleProvider);
     } catch (error) {
       console.error("Login failed:", error);
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -1910,10 +1772,17 @@ function AppContent() {
           <div className="space-y-4">
             <button 
               onClick={handleLogin}
-              className="w-full py-4 bg-gradient-to-r from-accent to-accent-2 text-white font-bold text-sm uppercase tracking-widest rounded-2xl shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3"
+              disabled={isLoggingIn}
+              className="w-full py-4 bg-gradient-to-r from-accent to-accent-2 text-white font-bold text-sm uppercase tracking-widest rounded-2xl shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:scale-100 transition-all flex items-center justify-center gap-3"
             >
-              <Dumbbell size={20} />
-              Войти и начать
+              {isLoggingIn ? (
+                <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}>
+                  <Settings size={20} />
+                </motion.div>
+              ) : (
+                <Dumbbell size={20} />
+              )}
+              {isLoggingIn ? 'Вход...' : 'Войти и начать'}
             </button>
             <p className="text-[10px] text-muted uppercase tracking-widest font-bold">безопасно через google</p>
           </div>
@@ -1925,65 +1794,82 @@ function AppContent() {
   return (
     <div className="min-h-screen bg-bg text-text font-sans pb-24">
       {/* Header */}
-      <header className="header p-4 border-b border-border sticky top-0 bg-bg/80 backdrop-blur-md z-40">
+      <header className="header px-4 py-3 bg-surface border-b border-border shadow-sm sticky top-0 z-40 backdrop-blur-md">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-3">
             <div 
-              className="w-8 h-8 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent overflow-hidden cursor-pointer"
+              className={`w-11 h-11 rounded-full border border-accent/20 flex items-center justify-center overflow-hidden cursor-pointer shadow-sm ${(userProfile?.photoURL || user?.photoURL) ? 'bg-accent/10' : 'bg-accent text-white'}`}
               onClick={() => setActiveTab('profile')}
             >
-              {userProfile?.photoURL ? (
-                <img src={userProfile.photoURL} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              {(userProfile?.photoURL || user?.photoURL) ? (
+                <img src={userProfile?.photoURL || user?.photoURL || ''} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               ) : (
-                <UserIcon size={16} />
+                <div className="text-sm font-bold uppercase tracking-widest">
+                  {(userProfile?.displayName || user?.displayName) ? (userProfile?.displayName || user?.displayName || '').split(' ').map(n => n[0]).join('').substring(0, 2) : <UserIcon size={20} />}
+                </div>
               )}
             </div>
             <div 
-              className="cursor-pointer"
-              onClick={() => setActiveTab('profile')}
+              className="cursor-pointer flex flex-col"
+              onClick={() => {
+                setActiveTab('profile');
+                setProfileEditMode(false);
+              }}
             >
-              <div className="logo text-lg font-display font-bold text-accent leading-none">
-                {userProfile?.displayName || 'Пользователь'} <span className="text-accent-2">·</span> Тренировки
+              <div className="text-xl font-display font-bold text-accent leading-tight">
+                {userProfile || user ? (userProfile?.displayName || user?.displayName || 'Пользователь') : (
+                  <div className="h-6 w-32 bg-accent/10 animate-pulse rounded-lg" />
+                )}
               </div>
-              {userProfile?.goalType ? (
-                <div 
-                  className={`text-[9px] font-bold px-2 py-0.5 rounded-full w-fit mt-1 ${goalTranslations[userProfile.goalType]?.color || 'bg-surface-2 text-muted'}`}
-                >
-                  {goalTranslations[userProfile.goalType]?.label || userProfile.goalType}
-                </div>
-              ) : (
-                <div 
-                  className="text-[9px] font-bold text-accent-2 bg-accent-2/10 px-2 py-0.5 rounded-full w-fit mt-1 hover:bg-accent-2/20 transition-all"
-                >
-                  ✨ Добавь цель
-                </div>
-              )}
-              <div className="text-[9px] text-muted uppercase font-semibold tracking-[0.15em] mt-1">{weekLabel}</div>
+              
+              <div className="flex flex-col mt-0.5">
+                {userProfile?.goalType ? (
+                  <motion.div 
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className={`text-[10px] font-bold px-3 py-1 rounded-2xl w-fit flex items-center gap-1.5 shadow-sm ${goalTranslations[userProfile.goalType]?.color || 'bg-accent/10 text-accent'}`}
+                  >
+                    {goalTranslations[userProfile.goalType]?.label || userProfile.goalType}
+                  </motion.div>
+                ) : (
+                  <motion.div 
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveTab('profile');
+                      setProfileEditMode(true);
+                    }}
+                    className="text-[10px] font-bold text-accent bg-accent/10 px-3 py-1 rounded-2xl w-fit hover:bg-accent/20 transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
+                  >
+                    ✨ Добавь цель
+                  </motion.div>
+                )}
+                <div className="text-[10px] text-muted uppercase font-semibold tracking-wider mt-1 opacity-70">{weekLabel}</div>
+              </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            {!isOnline && (
-              <div className="flex items-center gap-1.5 px-2 py-1 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500 animate-pulse">
-                <AlertCircle size={14} />
-                <span className="text-[10px] font-bold uppercase tracking-wider">Offline</span>
+
+          <div className="flex flex-col items-end gap-1">
+            <div className="flex items-center gap-3">
+              {!isOnline && (
+                <div className="flex items-center gap-1.5 px-2 py-1 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500 animate-pulse">
+                  <AlertCircle size={14} />
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Offline</span>
+                </div>
+              )}
+              <div className="text-right flex flex-col items-end">
+                <div className={`text-3xl font-display font-bold leading-none ${streakWeeks > 0 ? 'text-accent' : 'text-muted'}`}>{streakWeeks}</div>
+                <div className="text-[8px] text-muted uppercase font-bold tracking-widest mt-0.5">недель подряд</div>
               </div>
-            )}
-            <button 
-              onClick={() => setIsGuideOpen(true)}
-              className="w-10 h-10 rounded-xl bg-surface border border-border flex items-center justify-center text-accent hover:border-accent/50 transition-all"
-            >
-              <HelpCircle size={20} />
-            </button>
+            </div>
+            
             <button 
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              className="w-10 h-10 rounded-xl bg-surface border border-border flex items-center justify-center text-accent hover:border-accent/50 transition-all"
+              className="w-8 h-8 rounded-lg bg-surface-2 border border-border flex items-center justify-center text-accent hover:border-accent/50 transition-all shadow-sm"
             >
-              {theme === 'dark' ? <Moon size={20} /> : <Sun size={20} />}
+              {theme === 'dark' ? <Moon size={16} /> : <Sun size={16} />}
             </button>
-            <div className="text-right">
-              <div className="text-2xl font-display font-bold text-accent leading-none">{streakWeeks}</div>
-              <div className="text-[8px] text-muted uppercase font-semibold tracking-[0.15em]">недель подряд</div>
-            </div>
           </div>
         </div>
       </header>
@@ -2020,6 +1906,7 @@ function AppContent() {
               workouts={workouts}
               programData={programData}
               onEditProgram={() => setShowProgramEditor(true)}
+              onGoToCoach={() => setActiveTab('coach')}
               onReset={() => {
                 if (Object.keys(programData).length === 0) {
                   setConfirmDialog({
@@ -2027,7 +1914,7 @@ function AppContent() {
                     title: 'Восстановление программы',
                     message: 'Программа пуста. Восстановить стандартную программу?',
                     onConfirm: async () => {
-                      await handleUpdateProgram(PROGRAM);
+                      await handleUpdateProgram(DEFAULT_PROGRAM);
                       setConfirmDialog(null);
                     }
                   });
@@ -2104,6 +1991,7 @@ function AppContent() {
           {activeTab === 'profile' && (
             <ProfilePage 
               profile={userProfile} 
+              user={user}
               onUpdate={handleUpdateProfile} 
               onLogout={handleLogout}
               setActiveTab={setActiveTab}
@@ -2114,6 +2002,8 @@ function AppContent() {
               setCoachMessages={setCoachMessages}
               setNotification={setNotification}
               onShowGuide={() => setIsGuideOpen(true)}
+              isInitialEditing={profileEditMode}
+              onEditModeChange={setProfileEditMode}
             />
           )}
           {activeTab === 'strength' && (
@@ -2257,6 +2147,24 @@ function ProgramEditor({ program, onSave, onClose }: { program: any; onSave: (da
   const [selectedDay, setSelectedDay] = useState(Object.keys(localProgram)[0]);
   const [localDayName, setLocalDayName] = useState(Object.keys(localProgram)[0]);
   const [isSaving, setIsSaving] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const prevExercisesLength = useRef<number>(0);
+
+  useEffect(() => {
+    const currentLength = localProgram[selectedDay]?.exercises?.length || 0;
+    if (currentLength > prevExercisesLength.current && scrollRef.current) {
+      // Small delay to allow DOM to update
+      setTimeout(() => {
+        if (scrollRef.current) {
+          scrollRef.current.scrollTo({
+            top: scrollRef.current.scrollHeight,
+            behavior: 'smooth'
+          });
+        }
+      }, 100);
+    }
+    prevExercisesLength.current = currentLength;
+  }, [localProgram[selectedDay]?.exercises?.length, selectedDay]);
 
   useEffect(() => {
     setLocalDayName(selectedDay);
@@ -2272,8 +2180,8 @@ function ProgramEditor({ program, onSave, onClose }: { program: any; onSave: (da
     }
   };
 
-  const addExercise = (day: string) => {
-    const isCardio = localProgram[day]?.isCardio;
+  const addExercise = (day: string, type: 'strength' | 'cardio') => {
+    const isCardio = type === 'cardio';
     const newExercise = {
       name: isCardio ? 'Бег / Ходьба' : 'Новое упражнение',
       scheme: isCardio ? '30 мин' : '3 x 12',
@@ -2410,71 +2318,48 @@ function ProgramEditor({ program, onSave, onClose }: { program: any; onSave: (da
         animate={{ scale: 1, y: 0 }}
         className="bg-bg w-full max-w-2xl max-h-[90vh] rounded-[40px] shadow-2xl flex flex-col overflow-hidden border border-border"
       >
-        <div className="p-6 border-b border-border flex justify-between items-center bg-surface">
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-border flex justify-between items-center bg-surface">
           <div>
             <h2 className="text-xl font-display font-bold text-accent">Редактор программы</h2>
             <p className="text-[10px] text-muted uppercase font-bold tracking-widest mt-1">Настрой тренировки под себя</p>
           </div>
-          <div className="flex items-center gap-4">
-            <button onClick={onClose} className="p-2 text-muted hover:text-accent transition-colors">
-              <X size={24} />
-            </button>
-          </div>
+          <button onClick={onClose} className="p-2 text-muted hover:text-accent transition-colors">
+            <X size={24} />
+          </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-8 no-scrollbar">
+        {/* Content */}
+        <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-6 no-scrollbar">
           {/* Day Selector */}
-          <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-            {Object.keys(localProgram).map(day => (
-              <div key={day} className="relative group flex-shrink-0">
+          <div className="space-y-2">
+            <label className="text-[10px] text-muted uppercase font-bold tracking-widest ml-1">Выбери день</label>
+            <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+              {Object.keys(localProgram).map(day => (
                 <button 
+                  key={day}
                   onClick={() => setSelectedDay(day)}
-                  className={`px-5 py-3 rounded-2xl text-[11px] font-bold border transition-all shadow-sm ${
+                  className={`px-5 py-3 rounded-2xl text-[11px] font-bold border transition-all shadow-sm flex-shrink-0 ${
                     selectedDay === day ? 'bg-accent text-white border-accent' : 'bg-surface border-border text-muted hover:border-accent/30'
                   }`}
                 >
                   {day}
                 </button>
-                {selectedDay === day && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 flex gap-1.5 bg-surface p-1 rounded-full shadow-lg border border-border z-10">
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); moveDay(day, 'left'); }}
-                      className="p-1.5 bg-surface-2 rounded-full text-muted hover:text-accent transition-colors"
-                      title="Влево"
-                    >
-                      <ChevronLeft size={12} />
-                    </button>
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); moveDay(day, 'right'); }}
-                      className="p-1.5 bg-surface-2 rounded-full text-muted hover:text-accent transition-colors"
-                      title="Вправо"
-                    >
-                      <ChevronRight size={12} />
-                    </button>
-                    {Object.keys(localProgram).length > 1 && (
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); removeDay(day); }}
-                        className="p-1.5 bg-red-50 rounded-full text-red-500 hover:bg-red-100 transition-colors"
-                        title="Удалить"
-                      >
-                        <X size={12} />
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-            <button 
-              onClick={addDay}
-              className="px-4 py-2 rounded-xl text-[11px] font-bold border border-dashed border-accent text-accent bg-accent/5 hover:bg-accent/10 transition-all flex items-center gap-1"
-            >
-              <Plus size={14} /> День
-            </button>
+              ))}
+              <button 
+                onClick={addDay}
+                className="px-5 py-3 rounded-2xl text-[11px] font-bold border border-dashed border-accent text-accent bg-accent/5 hover:bg-accent/10 transition-all flex items-center gap-1 flex-shrink-0"
+              >
+                <Plus size={14} /> День
+              </button>
+            </div>
           </div>
 
           {/* Day Settings */}
-          <div className="bg-surface p-6 rounded-3xl border border-border shadow-sm space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {selectedDay && localProgram[selectedDay] ? (
+            <>
+              <div className="bg-surface p-6 rounded-[32px] border border-border shadow-sm space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-[10px] text-muted uppercase font-bold tracking-widest ml-1">Название дня</label>
                 <input 
@@ -2489,7 +2374,7 @@ function ProgramEditor({ program, onSave, onClose }: { program: any; onSave: (da
                     }
                   }}
                   placeholder="Например: День 1 или Кардио"
-                  className="w-full py-3 px-4 bg-surface-2/50 border-2 border-border rounded-xl focus:border-accent outline-none transition-all text-sm font-bold"
+                  className="w-full p-4 bg-surface-2/50 border-2 border-border rounded-2xl focus:border-accent outline-none transition-all text-sm font-bold"
                 />
               </div>
               <div className="space-y-2">
@@ -2499,97 +2384,143 @@ function ProgramEditor({ program, onSave, onClose }: { program: any; onSave: (da
                   value={localProgram[selectedDay]?.subtitle || ''}
                   onChange={(e) => updateDay(selectedDay, 'subtitle', e.target.value)}
                   placeholder="Например: Ягодицы + Ноги"
-                  className="w-full py-3 px-4 bg-surface-2/50 border-2 border-border rounded-xl focus:border-accent outline-none transition-all text-sm font-medium"
+                  className="w-full p-4 bg-surface-2/50 border-2 border-border rounded-2xl focus:border-accent outline-none transition-all text-sm font-medium"
                 />
               </div>
             </div>
-            <div className="flex items-center gap-3">
-               <input 
-                type="checkbox" 
-                id="isCardio"
-                checked={localProgram[selectedDay]?.isCardio || false}
-                onChange={(e) => updateDay(selectedDay, 'isCardio', e.target.checked)}
-                className="w-5 h-5 accent-accent"
-              />
-              <label htmlFor="isCardio" className="text-sm font-bold text-text">Это кардио-день</label>
+            
+            <div className="flex flex-col gap-2">
+              <label className="text-[10px] text-muted uppercase font-bold tracking-widest ml-1">Тип тренировки</label>
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => updateDay(selectedDay, 'isCardio', !localProgram[selectedDay]?.isCardio)}
+                  className={`flex-1 flex items-center justify-center gap-2 p-4 rounded-2xl border-2 transition-all font-bold text-sm ${
+                    localProgram[selectedDay]?.isCardio 
+                      ? 'bg-accent text-white border-accent shadow-lg shadow-accent/20' 
+                      : 'bg-transparent border-border text-muted hover:border-accent/30'
+                  }`}
+                >
+                  {localProgram[selectedDay]?.isCardio ? '🏃 Кардио-день' : '💪 Силовая тренировка'}
+                </button>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => moveDay(selectedDay, 'left')}
+                    className="w-14 h-14 flex items-center justify-center bg-surface-2 border-2 border-border rounded-2xl text-muted hover:text-accent hover:border-accent/30 transition-all"
+                    title="Переместить влево"
+                  >
+                    <ChevronLeft size={24} />
+                  </button>
+                  <button 
+                    onClick={() => moveDay(selectedDay, 'right')}
+                    className="w-14 h-14 flex items-center justify-center bg-surface-2 border-2 border-border rounded-2xl text-muted hover:text-accent hover:border-accent/30 transition-all"
+                    title="Переместить вправо"
+                  >
+                    <ChevronRight size={24} />
+                  </button>
+                </div>
+              </div>
             </div>
+
+            {Object.keys(localProgram).length > 1 && (
+              <div className="pt-2 border-t border-border/50">
+                <button 
+                  onClick={() => removeDay(selectedDay)}
+                  className="w-full py-3 text-red-500 text-[10px] font-bold uppercase tracking-widest hover:bg-red-500/5 rounded-xl transition-all flex items-center justify-center gap-2"
+                >
+                  <Trash2 size={14} /> Удалить этот день
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Exercises */}
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-accent uppercase tracking-widest">Упражнения</h3>
-              <button 
-                onClick={() => addExercise(selectedDay)}
-                className="flex items-center gap-1 text-accent text-[10px] font-bold uppercase tracking-wider hover:underline"
-              >
-                <Plus size={14} /> Добавить
-              </button>
+            <div className="flex flex-col gap-3 px-1">
+              <h3 className="text-[10px] text-accent uppercase font-bold tracking-widest">Упражнения</h3>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => addExercise(selectedDay, 'strength')}
+                  className="flex-1 flex items-center justify-center gap-2 py-3 bg-surface-2 border-2 border-border rounded-xl text-[10px] font-bold uppercase tracking-widest text-text hover:border-accent/30 transition-all"
+                >
+                  <Plus size={14} className="text-accent" /> Силовое
+                </button>
+                <button 
+                  onClick={() => addExercise(selectedDay, 'cardio')}
+                  className="flex-1 flex items-center justify-center gap-2 py-3 bg-surface-2 border-2 border-border rounded-xl text-[10px] font-bold uppercase tracking-widest text-text hover:border-accent/30 transition-all"
+                >
+                  <Plus size={14} className="text-accent" /> Кардио
+                </button>
+              </div>
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-4">
               {localProgram[selectedDay].exercises.map((ex: any, idx: number) => (
-                <div key={idx} className="bg-surface p-4 rounded-2xl border border-border shadow-sm space-y-3 relative group">
-                  <button 
-                    onClick={() => removeExercise(selectedDay, idx)}
-                    className="absolute top-2 right-2 p-1 text-muted hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                <div key={idx} className="bg-surface p-5 rounded-[32px] border border-border shadow-sm space-y-4 relative">
+                  <div className="absolute top-4 right-4 flex items-center gap-2">
+                    <div className={`px-2 py-1 rounded-lg text-[8px] font-bold uppercase tracking-widest ${ex.isCardio ? 'bg-blue-500/10 text-blue-500' : 'bg-accent/10 text-accent'}`}>
+                      {ex.isCardio ? 'Кардио' : 'Силовое'}
+                    </div>
+                    <button 
+                      onClick={() => removeExercise(selectedDay, idx)}
+                      className="p-2 text-muted hover:text-red-500 transition-all bg-surface-2/50 rounded-xl"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
                   
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-[9px] text-muted uppercase font-bold ml-1">Название</label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-muted uppercase font-bold tracking-widest ml-1">Название</label>
                       <input 
                         type="text" 
                         value={ex.name || ''}
                         onChange={(e) => updateExercise(selectedDay, idx, 'name', e.target.value)}
-                        className="w-full py-2 px-3 bg-surface-2/30 border border-border rounded-lg text-xs font-bold focus:border-accent outline-none"
+                        className="w-full p-4 bg-surface-2/30 border-2 border-border rounded-2xl text-sm font-bold focus:border-accent outline-none transition-all"
                       />
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-[9px] text-muted uppercase font-bold ml-1">
-                        {localProgram[selectedDay]?.isCardio ? 'Цель (напр. 30 мин)' : 'Схема (напр. 3 x 12)'}
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-muted uppercase font-bold tracking-widest ml-1">
+                        {ex.isCardio ? 'Цель (напр. 30 мин)' : 'Схема (напр. 3 x 12)'}
                       </label>
                       <input 
                         type="text" 
                         value={ex.scheme || ''}
                         onChange={(e) => updateExercise(selectedDay, idx, 'scheme', e.target.value)}
-                        className="w-full py-2 px-3 bg-surface-2/30 border border-border rounded-lg text-xs font-bold focus:border-accent outline-none"
+                        className="w-full p-4 bg-surface-2/30 border-2 border-border rounded-2xl text-sm font-bold focus:border-accent outline-none transition-all"
                       />
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-[9px] text-muted uppercase font-bold ml-1">
-                        {localProgram[selectedDay]?.isCardio ? 'Кол-во интервалов' : 'Кол-во сетов'}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-muted uppercase font-bold tracking-widest ml-1">
+                        {ex.isCardio ? 'Кол-во интервалов' : 'Кол-во сетов'}
                       </label>
                       <input 
                         type="number" 
                         value={ex.sets || 0}
                         onChange={(e) => updateExercise(selectedDay, idx, 'sets', parseInt(e.target.value) || 0)}
-                        className="w-full py-2 px-3 bg-surface-2/30 border border-border rounded-lg text-xs font-bold focus:border-accent outline-none"
+                        className="w-full p-4 bg-surface-2/30 border-2 border-border rounded-2xl text-sm font-bold focus:border-accent outline-none transition-all"
                       />
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-[9px] text-muted uppercase font-bold ml-1">
-                        {localProgram[selectedDay]?.isCardio ? 'Поля (через запятую)' : 'Подсказка (необязательно)'}
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-muted uppercase font-bold tracking-widest ml-1">
+                        {ex.isCardio ? 'Поля (через запятую)' : 'Подсказка (необязательно)'}
                       </label>
-                      {localProgram[selectedDay]?.isCardio ? (
+                      {ex.isCardio ? (
                         <input 
                           type="text" 
                           value={ex.fields?.join(', ') || 'мин, км, пульс'}
                           onChange={(e) => updateExercise(selectedDay, idx, 'fields', e.target.value.split(',').map(s => s.trim()).filter(s => s))}
                           placeholder="мин, км, пульс"
-                          className="w-full py-2 px-3 bg-surface-2/30 border border-border rounded-lg text-xs font-bold focus:border-accent outline-none"
+                          className="w-full p-4 bg-surface-2/30 border-2 border-border rounded-2xl text-sm font-bold focus:border-accent outline-none transition-all"
                         />
                       ) : (
                         <input 
                           type="text" 
                           value={ex.tip || ''}
                           onChange={(e) => updateExercise(selectedDay, idx, 'tip', e.target.value)}
-                          className="w-full py-2 px-3 bg-surface-2/30 border border-border rounded-lg text-xs font-bold focus:border-accent outline-none"
+                          className="w-full p-4 bg-surface-2/30 border-2 border-border rounded-2xl text-sm font-bold focus:border-accent outline-none transition-all"
                         />
                       )}
                     </div>
@@ -2598,9 +2529,16 @@ function ProgramEditor({ program, onSave, onClose }: { program: any; onSave: (da
               ))}
             </div>
           </div>
+            </>
+          ) : (
+            <div className="text-center py-12 text-muted">
+              <p>Добавьте первый день тренировки, нажав на кнопку "+ День"</p>
+            </div>
+          )}
         </div>
 
-        <div className="p-6 border-t border-border bg-surface flex gap-3">
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-border bg-surface flex gap-3">
           <button 
             onClick={onClose}
             className="flex-1 py-4 border-2 border-border text-muted font-bold rounded-2xl hover:bg-surface-2 transition-all"
@@ -2798,8 +2736,15 @@ function CoachPage({
       const ai = new GoogleGenAI({ apiKey: currentApiKey });
       const modelName = "gemini-3-flash-preview";
       
-      const systemPrompt = `Ты — профессиональный ИИ-фитнес-тренер. Твой стиль: профессиональный, объективный, конструктивный, лаконичный, без осуждения. Ты анализируешь данные тренировок, замеров и силовых рекордов. Твоя цель — помочь пользователю достичь спортивных результатов безопасно и эффективно.
-ОБЯЗАТЕЛЬНО учитывай пол, возраст и цели пользователя при составлении рекомендаций и ответов.
+      const systemPrompt = `Ты — профессиональный ИИ-фитнес-тренер. Твой стиль: профессиональный, объективный, конструктивный, тёплый, лаконичный, без осуждения. Отвечаешь на русском языке. Ты анализируешь данные тренировок, замеров и силовых рекордов. Твоя цель — помочь пользователю достичь спортивных результатов безопасно и эффективно.
+
+Ты умеешь:
+1. Составлять персональные программы тренировок и записывать их через update_training_program.
+2. Создавать технику выполнения упражнений и записывать через update_tech_data.
+3. Записывать замеры тела через add_bioimpedance_measurement.
+4. Анализировать фото, документы, скриншоты.
+
+---
 
 ПРИ АНАЛИЗЕ ТЕЛА ПО ФОТО РУКОВОДСТВУЙСЯ СЛЕДУЮЩИМИ ИНСТРУКЦИЯМИ:
 Что анализировать:
@@ -2816,15 +2761,256 @@ function CoachPage({
 Раздел 4 — Проблемные зоны: Конкретные места с пояснением.
 Раздел 5 — Приоритеты работы: 3-5 задач в порядке важности с 1-2 упражнениями для каждой.
 
-ВАЖНО:
+ВАЖНО ДЛЯ ФОТО:
 - Не говори "у вас лишний вес" — говори "есть резерв для снижения жировой массы".
 - Анализируй только то, что видишь на фото. Если не видно — так и скажи.
-- Для полного анализа нужны 3 фото: спереди, сзади и сбоку в полный рост, в облегающей одежде или без нее, в нейтральной позе.
+- Для полного анализа нужны 3 фото: спереди, сзади и сбоку в полный рост, минимум одежды, руки чуть разведены в стороны.
 
-Ты можешь:
-1. Обновлять программу тренировок (инструмент update_training_program).
-2. Обновлять технику выполнения упражнений (инструмент update_tech_data).
-3. Добавлять замеры биоимпеданса (инструмент add_bioimpedance_measurement).`;
+---
+
+ПРАВИЛО 1 — ПРОВЕРКА ДАННЫХ ПЕРЕД ДЕЙСТВИЕМ:
+
+Если пользователь просит составить программу —
+НЕ создавай её сразу.
+
+Сначала проверь контекст пользователя:
+- возраст (профиль или замеры)
+- пол (профиль)
+- цель goalType (профиль)
+- замеры тела — вес, жир, мышцы (замеры)
+- история тренировок (есть ли опыт, 
+  как давно тренируется, как часто)
+- фото тела если было загружено
+
+Если данные в контексте противоречивы 
+или им более 3 месяцев — уточни актуальность 
+у пользователя прежде чем использовать.
+
+---
+
+ПРАВИЛО 2 — СБОР НЕДОСТАЮЩИХ ДАННЫХ:
+
+Задавай ТОЛЬКО те вопросы ответы на которые 
+не получены ни из контекста ни из диалога.
+
+Не задавай повторно то что пользователь 
+уже написал в свободном тексте.
+
+Порядок приоритета вопросов:
+1. Как давно тренируешься и как регулярно?
+2. Сколько раз в неделю можешь тренироваться?
+3. Где тренируешься — зал, дома, улица?
+4. Какое оборудование доступно?
+   (штанга, гантели, тренажёры, турник, 
+   резинки, ничего)
+5. Есть ли травмы или ограничения по здоровью?
+6. Сколько времени на одну тренировку?
+
+Если пользователь ответил сразу на несколько — 
+принять все ответы и не переспрашивать.
+
+---
+
+ПРАВИЛО 3 — СОЗДАНИЕ ПРОГРАММЫ:
+
+Когда все необходимые данные собраны —
+вызывай update_training_program СИНХРОННО 
+с текстовым описанием программы.
+Не жди дополнительного подтверждения.
+
+После создания программы СРАЗУ вызывай 
+update_tech_data — заполни технику 
+для каждого упражнения программы.
+
+---
+
+УРОВЕНЬ ПОДГОТОВКИ — проверяй в первую очередь:
+
+Определи уровень из истории тренировок 
+и диалога:
+
+НАЧИНАЮЩИЙ — менее 6 месяцев стажа 
+или длительный перерыв более 3 месяцев:
+- Не более 3 тренировок в неделю
+- Базовые движения без сложной техники
+- Лёгкие стартовые веса, акцент на технику
+- Обязателен день отдыха между тренировками
+
+СРЕДНИЙ — 6 месяцев — 2 года стажа, 
+регулярные тренировки:
+- 3-4 тренировки в неделю
+- Базовые + вспомогательные упражнения
+- Прогрессия нагрузок от сессии к сессии
+- Можно сплит по группам мышц
+
+ПРОДВИНУТЫЙ — более 2 лет стажа, 
+тренировки 4+ раз в неделю стабильно:
+- 4-5 тренировок в неделю
+- Полноценный сплит
+- Периодизация нагрузки — тяжёлые 
+  и лёгкие недели чередуются
+- Можно специализацию под слабые зоны
+
+---
+
+ВОЗРАСТ корректирует программу 
+поверх уровня подготовки:
+
+До 30 лет:
+- Высокий объём
+- Короткое восстановление между тренировками
+- Можно тренироваться 5 раз в неделю
+
+30-45 лет:
+- Умеренный объём
+- День отдыха между силовыми обязателен
+- 3-4 тренировки в неделю оптимально
+
+45+ лет НЕЗАВИСИМО от стажа:
+- Добавить мобильность и растяжку 
+  в каждую тренировку — 10 минут
+- Между тяжёлыми тренировками 
+  минимум 48 часов восстановления
+- Объём не снижать если стаж высокий —
+  снижать только интенсивность 
+  при признаках перетренированности
+- Приоритет суставному здоровью — 
+  face pulls, ротаторы плеча, 
+  разгрузка поясницы обязательны
+
+50+ лет ПРОДВИНУТЫЙ уровень:
+- Программа по объёму и сложности 
+  НЕ отличается от 35-летнего 
+  продвинутого атлета
+- Отличие только в восстановлении — 
+  больше сна, больше растяжки, 
+  один разгрузочный день в неделю
+- Тяжёлые базовые движения оставить — 
+  они критически важны для 
+  сохранения мышечной массы после 45
+
+ВАЖНО: Никогда не упрощай программу 
+только из-за возраста если человек 
+тренируется регулярно и долго.
+Возраст — это фактор восстановления, 
+не потолок возможностей.
+
+---
+
+ЛОГИКА СОСТАВЛЕНИЯ ПРОГРАММЫ:
+
+ПОЛ:
+- женщины — приоритет ягодицы и задняя цепь, 
+  меньше изолированной работы на руки
+- мужчины — приоритет грудь, спина, плечи, 
+  ноги равнозначно верху
+
+ЦЕЛЬ (goalType):
+- hypertrophy — 3-4 силовых в неделю, 
+  8-12 повторов, 3-4 подхода.
+  Прогрессия нагрузок в базовых движениях,
+  рост объёма от сессии к сессии.
+- strength — 3 силовых в неделю, 
+  3-6 повторов, тяжёлые базовые движения.
+  Линейная прогрессия веса.
+- fat_loss — 3 силовых + 2 кардио в неделю, 
+  12-15 повторов, короткий отдых.
+  Сохранение объёма нагрузки при снижении 
+  веса тела — главный приоритет.
+- recomposition — 3 силовых + 1-2 кардио, 
+  10-12 повторов.
+  Фокус на прогрессии в базовых движениях
+  при высокой интенсивности — стимулирует 
+  рост мышц на фоне поддержания калорий.
+  Обязательна связь с телесными замерами.
+- endurance — 2-3 силовых + кардио, 
+  15-20 повторов, умеренные веса.
+  Прогресс по повторам, не по весу.
+- tone — 3 тренировки в неделю, 
+  12-15 повторов, умеренные веса.
+  Главное — регулярность и стабильность 
+  объёма нагрузки.
+
+ОБОРУДОВАНИЕ:
+- только гантели — заменить все штанговые 
+  упражнения на гантельные аналоги
+- дома без оборудования — упражнения 
+  с весом тела и резинками
+- полный зал — все тренажёры и свободные веса
+
+ДАННЫЕ ТЕЛА если есть:
+- жир выше нормы (>25% женщины, >20% мужчины) 
+  — добавить кардио-дни, приоритет базовым
+- слабые ягодицы визуально — ягодичный мостик 
+  и румынская тяга в приоритет каждого дня ног
+- передний наклон таза — растяжка сгибателей 
+  бедра и укрепление кора в каждой тренировке
+- сутулость, скруглённые плечи — face pulls 
+  и тяга к груди в каждую тренировку верха
+- висцеральный жир — кардио обязательно, 
+  интервальные протоколы
+
+ТРАВМЫ:
+- спина — исключить становую тягу классическую,
+  заменить на гиперэкстензию и ягодичный мостик
+- колени — исключить глубокие приседания,
+  заменить на жим ногами и разгибания
+- плечи — исключить жим над головой,
+  заменить на тягу в наклоне и горизонтальные 
+  жимы с нейтральным хватом
+
+---
+
+ФОРМАТ ПРОГРАММЫ:
+
+Каждый день:
+- Название: "День 1", "День 2" и т.д.
+- Подзаголовок: группы мышц через +
+- 4-6 упражнений на силовой день
+- Для каждого упражнения: 
+  схема подходы × повторы,
+  подсказка по технике,
+  стартовый вес с учётом пола и уровня
+- Кардио-дни с флагом isCardio
+
+---
+
+ФОРМАТ ТЕХНИКИ (update_tech_data):
+
+Для каждого упражнения программы создать 
+карточку техники:
+- title: название упражнения
+- subtitle: группа мышц и тип движения
+- content: 
+  ● Исходное положение
+  ● Ключевые точки техники (2-4 пункта)
+  ● Частые ошибки
+  ● На что обратить внимание
+
+---
+
+ПОСЛЕ СОЗДАНИЯ ПРОГРАММЫ:
+
+Кратко объясни пользователю:
+- Почему такой порядок упражнений
+- Почему такие диапазоны повторов
+- Что отслеживать в первые 2 недели
+- Когда ожидать первых результатов
+
+---
+
+ОБЩИЕ ПРАВИЛА:
+
+Никогда не используй данные из контекста 
+без проверки их актуальности если они 
+старше 3 месяцев.
+
+Всегда учитывай пол, возраст, уровень 
+подготовки и цель — это четыре обязательных 
+параметра для любой рекомендации.
+
+Данные о теле используются исключительно 
+в фитнес-целях.`;
 
       const dataContext = `
         ПЕРЕМЕННЫЕ ПОЛЬЗОВАТЕЛЯ (ДЛЯ АНАЛИЗА):
@@ -3364,31 +3550,49 @@ function CoachPage({
           <motion.div 
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-accent/10 border border-accent/20 rounded-3xl p-6 text-center space-y-4 mx-2"
+            className="bg-surface border border-border rounded-3xl p-6 text-center space-y-4 mx-2 shadow-sm"
           >
-            <div className="w-16 h-16 bg-accent/20 rounded-full flex items-center justify-center mx-auto">
-              <Camera size={32} className="text-accent" />
+            <div className="w-16 h-16 bg-accent/10 rounded-full flex items-center justify-center mx-auto mb-2">
+              <Bot size={32} className="text-accent" />
             </div>
-            <div className="space-y-2">
-              <h3 className="font-bold text-text">Персональный анализ тела</h3>
-              <p className="text-sm text-muted leading-relaxed">
-                Для составления максимально точного плана тренировок и анализа осанки, пожалуйста, добавьте 3 фотографии:
-              </p>
-              <div className="grid grid-cols-3 gap-2 pt-2">
-                <div className="bg-surface p-2 rounded-xl border border-border text-[10px] font-bold">ФАС</div>
-                <div className="bg-surface p-2 rounded-xl border border-border text-[10px] font-bold">ПРОФИЛЬ</div>
-                <div className="bg-surface p-2 rounded-xl border border-border text-[10px] font-bold">СПИНА</div>
+            <h3 className="text-lg font-display font-bold text-accent mb-2">Твой ИИ-тренер</h3>
+            <p className="text-sm text-muted mb-6">
+              Я помогу составить идеальную программу тренировок. Чтобы программа получилась максимально точной, выполни эти шаги:
+            </p>
+            
+            <div className="space-y-3 text-left">
+              <div className="bg-bg p-4 rounded-2xl flex gap-3 items-start">
+                <div className="w-6 h-6 bg-accent/10 text-accent rounded-full flex items-center justify-center font-bold text-xs shrink-0">1</div>
+                <div>
+                  <p className="text-xs font-bold">Заполни профиль</p>
+                  <p className="text-[10px] text-muted mt-1">Укажи свой возраст, вес, рост и уровень подготовки во вкладке "Профиль".</p>
+                </div>
               </div>
-              <p className="text-[11px] text-muted italic pt-2">
-                * Фото в полный рост, в облегающей одежде, руки вдоль тела.
-              </p>
+              
+              <div className="bg-bg p-4 rounded-2xl flex gap-3 items-start">
+                <div className="w-6 h-6 bg-accent/10 text-accent rounded-full flex items-center justify-center font-bold text-xs shrink-0">2</div>
+                <div>
+                  <p className="text-xs font-bold">Напиши свою цель</p>
+                  <p className="text-[10px] text-muted mt-1">Расскажи мне в чате, чего ты хочешь достичь (похудеть, набрать массу, стать сильнее).</p>
+                </div>
+              </div>
+              
+              <div className="bg-bg p-4 rounded-2xl flex gap-3 items-start">
+                <div className="w-6 h-6 bg-accent/10 text-accent rounded-full flex items-center justify-center font-bold text-xs shrink-0">3</div>
+                <div>
+                  <p className="text-xs font-bold">Загрузи фото для анализа</p>
+                  <p className="text-[10px] text-muted mt-1">Прикрепи фото в полный рост (минимум одежды, руки чуть в стороны) для оценки пропорций.</p>
+                </div>
+              </div>
+              
+              <div className="bg-bg p-4 rounded-2xl flex gap-3 items-start">
+                <div className="w-6 h-6 bg-accent/10 text-accent rounded-full flex items-center justify-center font-bold text-xs shrink-0">4</div>
+                <div>
+                  <p className="text-xs font-bold">Добавь замеры</p>
+                  <p className="text-[10px] text-muted mt-1">Внеси свои объемы во вкладке "Замеры", чтобы я мог отслеживать прогресс.</p>
+                </div>
+              </div>
             </div>
-            <button 
-              onClick={() => fileInputRef.current?.click()}
-              className="bg-accent text-white px-6 py-3 rounded-2xl font-bold text-sm shadow-lg shadow-accent/20 active:scale-95 transition-all"
-            >
-              Добавить фото
-            </button>
           </motion.div>
         )}
         <AnimatePresence initial={false}>
@@ -3601,6 +3805,7 @@ function CoachPage({
 
 function ProfilePage({ 
   profile, 
+  user,
   onUpdate, 
   onLogout,
   setActiveTab,
@@ -3610,9 +3815,12 @@ function ProfilePage({
   setTheme,
   setCoachMessages,
   setNotification,
-  onShowGuide
+  onShowGuide,
+  isInitialEditing = false,
+  onEditModeChange
 }: { 
   profile: UserProfile | null; 
+  user: User | null;
   onUpdate: (data: any, photoFile?: File) => Promise<void>; 
   onLogout: () => void;
   setActiveTab: (tab: any) => void;
@@ -3623,24 +3831,38 @@ function ProfilePage({
   setCoachMessages: (messages: any[]) => void;
   setNotification: (notif: any) => void;
   onShowGuide: () => void;
+  isInitialEditing?: boolean;
+  onEditModeChange?: (isEditing: boolean) => void;
 }) {
   const [name, setName] = useState(profile?.displayName || '');
   const [age, setAge] = useState(profile?.age?.toString() || '');
   const [gender, setGender] = useState<'male' | 'female' | 'other'>(profile?.gender || 'male');
   const [goal, setGoal] = useState(profile?.goal || '');
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditing, setIsEditing] = useState(isInitialEditing);
   const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (isInitialEditing) {
+      setIsEditing(true);
+    }
+  }, [isInitialEditing]);
+
+  const handleToggleEdit = (val: boolean) => {
+    setIsEditing(val);
+    onEditModeChange?.(val);
+  };
+
   const [isConfirmOpen, setIsConfirmOpen] = useState<{ type: 'delete' | 'logout' | 'export' | 'import' | null; action: () => void }>({ type: null, action: () => {} });
   const backupFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (profile) {
-      setName(profile.displayName || '');
-      setAge(profile.age?.toString() || '');
-      setGender(profile.gender || 'male');
-      setGoal(profile.goal || '');
+    if (profile || user) {
+      setName(profile?.displayName || user?.displayName || '');
+      setAge(profile?.age?.toString() || '');
+      setGender(profile?.gender || 'male');
+      setGoal(profile?.goal || '');
     }
-  }, [profile]);
+  }, [profile, user]);
 
   const openConfirm = (type: 'delete' | 'logout' | 'export' | 'import', action: () => void) => {
     setIsConfirmOpen({ type, action });
@@ -3726,7 +3948,7 @@ function ProfilePage({
     setAge(profile?.age?.toString() || '');
     setGender(profile?.gender || 'male');
     setGoal(profile?.goal || '');
-    setIsEditing(false);
+    handleToggleEdit(false);
   };
 
   const handleSaveProfile = async (photoFile?: File) => {
@@ -3739,7 +3961,7 @@ function ProfilePage({
         goal: goal
       }, photoFile);
       setNotification({ show: true, title: 'Сохранено', message: 'Профиль обновлён ✓' });
-      setIsEditing(false);
+      handleToggleEdit(false);
       setPhotoFile(null); // Clear local file state after success
     } catch (error: any) {
       console.error("Error saving profile:", error);
@@ -3772,8 +3994,8 @@ function ProfilePage({
         <div className="relative w-16 h-16 bg-accent/10 rounded-3xl flex items-center justify-center text-accent overflow-hidden">
           {previewUrl ? (
             <img src={previewUrl} alt="Profile" className="w-full h-full object-cover" />
-          ) : profile?.photoURL ? (
-            <img src={profile.photoURL} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+          ) : (profile?.photoURL || user?.photoURL) ? (
+            <img src={profile?.photoURL || user?.photoURL || ''} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
           ) : (
             <UserIcon size={32} />
           )}
@@ -3785,8 +4007,8 @@ function ProfilePage({
           )}
         </div>
         <div>
-          <h2 className="text-2xl font-display font-bold text-text">{profile?.displayName || 'Пользователь'}</h2>
-          <p className="text-xs text-muted font-bold uppercase tracking-widest">{profile?.email}</p>
+          <h2 className="text-2xl font-display font-bold text-text">{profile?.displayName || user?.displayName || 'Пользователь'}</h2>
+          <p className="text-xs text-muted font-bold uppercase tracking-widest">{profile?.email || user?.email}</p>
         </div>
       </div>
 
@@ -3795,7 +4017,7 @@ function ProfilePage({
           <h3 className="text-sm font-bold text-accent uppercase tracking-widest">Личные данные</h3>
           {!isEditing && (
             <button 
-              onClick={() => setIsEditing(true)}
+              onClick={() => handleToggleEdit(true)}
               className="absolute top-5 right-5 text-muted hover:text-accent transition-all"
             >
               <Edit2 size={16} />
@@ -4029,6 +4251,7 @@ function TodayPage({
   workouts,
   programData,
   onEditProgram,
+  onGoToCoach,
   onReset,
   isLoading
 }: any) {
@@ -4045,15 +4268,40 @@ function TodayPage({
   
   if (Object.keys(programData).length === 0) {
     return (
-      <div className="text-center py-20 bg-surface rounded-[40px] border border-border shadow-sm">
-        <AlertTriangle className="mx-auto mb-4 text-accent" size={48} />
-        <p className="text-sm font-bold text-text mb-4">Программа пуста</p>
-        <button 
-          onClick={() => onReset()} 
-          className="px-6 py-3 bg-accent text-white rounded-2xl text-xs font-bold uppercase tracking-widest"
-        >
-          Восстановить по умолчанию
-        </button>
+      <div className="text-center py-12 px-6 bg-surface rounded-[40px] border border-border shadow-sm flex flex-col items-center">
+        <div className="w-20 h-20 bg-accent/10 rounded-full flex items-center justify-center mb-6">
+          <Dumbbell className="text-accent" size={40} />
+        </div>
+        <h2 className="text-2xl font-display font-bold text-accent mb-3">Программа пуста</h2>
+        <p className="text-muted text-sm mb-8 max-w-xs">
+          Выбери, как ты хочешь начать свои тренировки:
+        </p>
+        
+        <div className="flex flex-col gap-4 w-full max-w-sm">
+          <button 
+            onClick={onEditProgram} 
+            className="w-full py-4 bg-accent text-white rounded-2xl text-sm font-bold shadow-lg hover:shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3"
+          >
+            <Settings size={20} />
+            Создать вручную
+          </button>
+          
+          <button 
+            onClick={onGoToCoach} 
+            className="w-full py-4 bg-surface-2 border-2 border-accent/20 text-accent rounded-2xl text-sm font-bold hover:bg-accent/10 active:scale-95 transition-all flex items-center justify-center gap-3"
+          >
+            <Bot size={20} />
+            Создать с ИИ-коучем
+          </button>
+          
+          <button 
+            onClick={() => onReset()} 
+            className="w-full py-4 bg-transparent border-2 border-border text-muted rounded-2xl text-sm font-bold hover:border-accent/30 hover:text-text active:scale-95 transition-all flex items-center justify-center gap-3"
+          >
+            <AlertTriangle size={20} />
+            Использовать стандартную
+          </button>
+        </div>
       </div>
     );
   }
@@ -4089,13 +4337,6 @@ function TodayPage({
           </div>
         </div>
         <div className="flex gap-2">
-          <button 
-            onClick={onReset}
-            className="flex items-center gap-2 px-3 py-1.5 bg-red-50 text-red-500 rounded-xl text-[10px] font-bold uppercase tracking-wider hover:bg-red-100 transition-all border border-red-100"
-          >
-            <RotateCcw size={14} />
-            Сброс
-          </button>
           <button 
             onClick={onEditProgram}
             className="flex items-center gap-2 px-3 py-1.5 bg-accent/10 text-accent rounded-xl text-[10px] font-bold uppercase tracking-wider hover:bg-accent/20 transition-all"
