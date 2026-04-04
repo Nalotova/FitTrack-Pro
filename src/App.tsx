@@ -66,7 +66,8 @@ import {
   Tooltip, 
   ResponsiveContainer, 
   AreaChart, 
-  Area 
+  Area,
+  ReferenceLine
 } from 'recharts';
 import { format, parseISO, subDays, isSameDay, startOfMonth, endOfMonth, differenceInDays, startOfWeek, subWeeks, subMonths, isWithinInterval, endOfWeek, eachDayOfInterval, isSameMonth, addMonths } from 'date-fns';
 import { ru } from 'date-fns/locale';
@@ -166,6 +167,11 @@ interface StrengthRecord {
   exercise: string;
   weight: number;
   reps: number;
+  volume?: number;
+  avgWeight?: number;
+  maxWeight?: number;
+  totalReps?: number;
+  setsCount?: number;
 }
 
 interface UserProfile {
@@ -176,11 +182,22 @@ interface UserProfile {
   age?: string | number;
   gender?: 'male' | 'female' | 'other';
   goal?: string;
+  goalType?: 'hypertrophy' | 'strength' | 'fat_loss' | 'recomposition' | 'endurance' | 'tone';
+  goalChangedAt?: string;
   reminders?: any[];
   createdAt?: string;
   updatedAt?: string;
   uid?: string;
 }
+
+const goalTranslations: Record<string, { label: string; color: string }> = {
+  hypertrophy: { label: '💪 Гипертрофия', color: 'bg-accent/20 text-accent' },
+  strength: { label: '🏋️ Сила', color: 'bg-accent-2/20 text-accent-2' },
+  fat_loss: { label: '🔥 Жиросжигание', color: 'bg-red-500/20 text-red-500' },
+  recomposition: { label: '⚡ Рекомпозиция', color: 'bg-yellow-500/20 text-yellow-500' },
+  endurance: { label: '🏃 Выносливость', color: 'bg-blue-500/20 text-blue-500' },
+  tone: { label: '🌿 Тонус', color: 'bg-green-500/20 text-green-500' },
+};
 
 // Program Data
 const PROGRAM: Record<string, { subtitle: string; isCardio?: boolean; exercises: any[] }> = {
@@ -450,6 +467,7 @@ function AppContent() {
   const [strengthRecords, setStrengthRecords] = useState<StrengthRecord[]>([]);
   const [activeTab, setActiveTab] = useState<'today' | 'progress' | 'strength' | 'tech' | 'coach' | 'profile' | 'measurements'>('today');
   const [activeProgressTab, setActiveProgressTab] = useState<'workouts' | 'body'>('workouts');
+  const [chartMetric, setChartMetric] = useState<'weight' | 'volume' | 'reps'>('weight');
   const [coachMessages, setCoachMessages] = useState<any[]>([]);
   const [isCoachLoading, setIsCoachLoading] = useState(false);
   const [programData, setProgramData] = useState<Record<string, any>>(PROGRAM);
@@ -709,20 +727,78 @@ function AppContent() {
     }
   };
 
-  const updateProgramTipWithWeight = async (exercise: string, weight: number) => {
-    if (!programData || !exercise || !weight) return;
+  const updateProgramTipWithWeight = async (exercise: string, currentRecord: Partial<StrengthRecord>) => {
+    if (!programData || !exercise || !currentRecord) return;
+    
+    const goalType = userProfile?.goalType;
+    const goalChangedAt = userProfile?.goalChangedAt;
+    
+    // Filter records by current goal period
+    const history = strengthRecords
+      .filter(r => r.exercise.toLowerCase() === exercise.toLowerCase())
+      .filter(r => !goalChangedAt || new Date(r.date) >= new Date(goalChangedAt))
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    // Add current record to history for analysis if it's not already there
+    const fullHistory = [currentRecord as StrengthRecord, ...history];
+    
+    let suffix = '';
+    const last = fullHistory[0];
+    const prev = fullHistory[1];
+    const prev2 = fullHistory[2];
+
+    if (goalType === 'hypertrophy' || goalType === 'recomposition') {
+      const vol = last.volume || 0;
+      const pVol = prev?.volume || 0;
+      const p2Vol = prev2?.volume || 0;
+      const avg = last.avgWeight || 0;
+      const pAvg = prev?.avgWeight || 0;
+
+      if (prev && vol < pVol * 0.85) {
+        suffix = `Перегрузка! Вес тот же. Цель объём ${Math.round(pVol)}кг`;
+      } else if (prev && prev2 && vol > pVol && pVol > p2Vol && avg >= pAvg) {
+        suffix = `Адаптация! +вес. Цель объём ${Math.round(vol * 1.06)}кг`;
+      } else {
+        suffix = `Цель объём ${Math.round(vol * 1.05)}кг (сейчас ${vol})`;
+      }
+    } else if (goalType === 'strength') {
+      const max = last.maxWeight || last.weight || 0;
+      suffix = `Цель вес ${Math.round(max * 1.025)}кг (рекорд ${max})`;
+    } else if (goalType === 'fat_loss') {
+      const vol = last.volume || 0;
+      const pVol = prev?.volume || 0;
+      if (prev && Math.abs(vol - pVol) / pVol < 0.05) {
+        suffix = `Стабильно. Цель +1 повтор к подходу`;
+      } else {
+        suffix = `Держи объём ${Math.round(vol)}кг`;
+      }
+    } else if (goalType === 'endurance') {
+      suffix = `Цель +2 повтора к подходу`;
+    } else if (goalType === 'tone') {
+      const vol = last.volume || 0;
+      const pVol = prev?.volume || 0;
+      const p2Vol = prev2?.volume || 0;
+      if (prev && prev2 && Math.abs(vol - pVol) < 10 && Math.abs(pVol - p2Vol) < 10) {
+        suffix = `3 сессии стабильно. Можно +вес`;
+      } else {
+        suffix = `Регулярность — залог успеха!`;
+      }
+    } else {
+      suffix = `${last.weight}кг+`;
+    }
+
     const updatedProgram = JSON.parse(JSON.stringify(programData));
     let changed = false;
+
     Object.keys(updatedProgram).forEach(dayKey => {
       updatedProgram[dayKey].exercises.forEach((ex: any) => {
         if (ex.name.toLowerCase() === exercise.toLowerCase()) {
-          const suffix = `${weight}+`;
+          // Pattern to match any existing recommendation suffix
+          const weightPattern = /\s(ср\.|рекорд|прошлый раз|Цель|Перегрузка|Адаптация|Стабильно|Держи|3 сессии|Регулярность|\d+(\.\d+)?\+).*$/;
           if (!ex.tip) {
             ex.tip = suffix;
             changed = true;
           } else {
-            // Check if it already ends with a weight pattern like " 50+"
-            const weightPattern = /\s\d+(\.\d+)?\+$/;
             if (weightPattern.test(ex.tip)) {
               ex.tip = ex.tip.replace(weightPattern, ` ${suffix}`);
             } else {
@@ -733,6 +809,7 @@ function AppContent() {
         }
       });
     });
+
     if (changed) {
       await handleUpdateProgram(updatedProgram);
     }
@@ -977,12 +1054,44 @@ function AppContent() {
       let photoURL = data.photoURL !== undefined ? data.photoURL : existingData.photoURL;
       
       if (photoFile) {
+        // Limit file size to 5MB
+        if (photoFile.size > 5 * 1024 * 1024) {
+          throw new Error("Файл слишком большой. Максимальный размер 5МБ.");
+        }
+
         const storageRef = ref(storage, `users/${user.uid}/profile.jpg`);
-        await uploadBytes(storageRef, photoFile);
+        
+        // Add a timeout for upload to prevent infinite hanging
+        const uploadPromise = uploadBytes(storageRef, photoFile);
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error("Превышено время ожидания загрузки фото. Проверьте интернет-соединение.")), 30000)
+        );
+        
+        await Promise.race([uploadPromise, timeoutPromise]);
         photoURL = await getDownloadURL(storageRef);
       }
       
-      const updateData = { ...data, photoURL: photoURL || null, updatedAt: new Date().toISOString() };
+      const updateData: any = { ...data, photoURL: photoURL || null, updatedAt: new Date().toISOString() };
+
+      // Task 1: Classification
+      if (data.goal && data.goal !== existingData.goal) {
+        try {
+          const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+          const response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: `Пользователь написал свою фитнес-цель: ${data.goal}. Определи тип цели одним словом из списка: hypertrophy, strength, fat_loss, recomposition, endurance, tone. Верни только одно слово.`,
+          });
+          const goalType = response.text?.trim().toLowerCase();
+          const validGoals = ['hypertrophy', 'strength', 'fat_loss', 'recomposition', 'endurance', 'tone'];
+          if (goalType && validGoals.includes(goalType)) {
+            updateData.goalType = goalType;
+            updateData.goalChangedAt = new Date().toISOString();
+          }
+        } catch (e) {
+          console.error("Gemini classification failed:", e);
+        }
+      }
+
       if (!docSnap.exists()) {
         const fullData = {
           ...updateData,
@@ -996,7 +1105,10 @@ function AppContent() {
         await setDoc(userRef, updateData, { merge: true });
       }
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}`);
+      console.error("Profile update error:", error);
+      if (error instanceof Error && !error.message.includes("Файл слишком большой") && !error.message.includes("время ожидания")) {
+        handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}`);
+      }
       throw error;
     }
   };
@@ -1045,11 +1157,23 @@ function AppContent() {
             return prev;
           }, ex.sets[0]);
 
-          if (bestSet.weight > 0) {
+          // Task 3: Calculate volume, avgWeight, setsCount, maxWeight, totalReps
+          const volume = ex.sets.reduce((sum, s) => sum + (s.weight * s.reps), 0);
+          const totalReps = ex.sets.reduce((sum, s) => sum + s.reps, 0);
+          const avgWeight = totalReps > 0 ? volume / totalReps : 0;
+          const maxWeight = Math.max(...ex.sets.map(s => s.weight));
+          const setsCount = ex.sets.length;
+
+          if (bestSet.weight > 0 || volume > 0) {
             await handleSaveStrength({
               exercise: ex.name,
               weight: bestSet.weight,
-              reps: bestSet.reps
+              reps: bestSet.reps,
+              volume,
+              avgWeight,
+              maxWeight,
+              totalReps,
+              setsCount
             });
           }
         }
@@ -1227,6 +1351,15 @@ function AppContent() {
       if ('reps' in cleanData) {
         cleanData.reps = isNaN(Number(cleanData.reps)) || !isFinite(Number(cleanData.reps)) ? 0 : Number(cleanData.reps);
       }
+      if ('volume' in cleanData) {
+        cleanData.volume = isNaN(Number(cleanData.volume)) || !isFinite(Number(cleanData.volume)) ? 0 : Number(cleanData.volume);
+      }
+      if ('avgWeight' in cleanData) {
+        cleanData.avgWeight = isNaN(Number(cleanData.avgWeight)) || !isFinite(Number(cleanData.avgWeight)) ? 0 : Number(cleanData.avgWeight);
+      }
+      if ('setsCount' in cleanData) {
+        cleanData.setsCount = isNaN(Number(cleanData.setsCount)) || !isFinite(Number(cleanData.setsCount)) ? 0 : Number(cleanData.setsCount);
+      }
 
       await addDoc(collection(db, 'strength'), {
         userId: user.uid,
@@ -1235,8 +1368,8 @@ function AppContent() {
       });
       
       // Update program tip if exercise matches
-      if (data.exercise && data.weight) {
-        await updateProgramTipWithWeight(data.exercise, data.weight);
+      if (data.exercise) {
+        await updateProgramTipWithWeight(data.exercise, cleanData);
       }
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'strength');
@@ -1282,6 +1415,15 @@ function AppContent() {
       if ('reps' in cleanData) {
         cleanData.reps = isNaN(Number(cleanData.reps)) || !isFinite(Number(cleanData.reps)) ? 0 : Number(cleanData.reps);
       }
+      if ('volume' in cleanData) {
+        cleanData.volume = isNaN(Number(cleanData.volume)) || !isFinite(Number(cleanData.volume)) ? 0 : Number(cleanData.volume);
+      }
+      if ('avgWeight' in cleanData) {
+        cleanData.avgWeight = isNaN(Number(cleanData.avgWeight)) || !isFinite(Number(cleanData.avgWeight)) ? 0 : Number(cleanData.avgWeight);
+      }
+      if ('setsCount' in cleanData) {
+        cleanData.setsCount = isNaN(Number(cleanData.setsCount)) || !isFinite(Number(cleanData.setsCount)) ? 0 : Number(cleanData.setsCount);
+      }
 
       await setDoc(doc(db, 'strength', id), cleanData, { merge: true });
       
@@ -1289,9 +1431,8 @@ function AppContent() {
       const record = strengthRecords.find(r => r.id === id);
       if (record) {
         const exercise = data.exercise || record.exercise;
-        const weight = data.weight || record.weight;
-        if (exercise && weight) {
-          await updateProgramTipWithWeight(exercise, weight);
+        if (exercise) {
+          await updateProgramTipWithWeight(exercise, { ...record, ...cleanData });
         }
       }
     } catch (error) {
@@ -1300,6 +1441,18 @@ function AppContent() {
   };
 
   // Stats
+  useEffect(() => {
+    if (userProfile?.goalType) {
+      if (userProfile.goalType === 'hypertrophy' || userProfile.goalType === 'recomposition') {
+        setChartMetric('volume');
+      } else if (userProfile.goalType === 'strength') {
+        setChartMetric('weight');
+      } else {
+        setChartMetric('reps');
+      }
+    }
+  }, [userProfile?.goalType]);
+
   const streakWeeks = useMemo(() => {
     if (workouts.length === 0) return 0;
     
@@ -1646,7 +1799,20 @@ function AppContent() {
               <div className="logo text-lg font-display font-bold text-accent leading-none">
                 {userProfile?.displayName || 'Пользователь'} <span className="text-accent-2">·</span> Тренировки
               </div>
-              <div className="text-[9px] text-muted uppercase font-semibold tracking-[0.15em] mt-0.5">{weekLabel}</div>
+              {userProfile?.goalType ? (
+                <div 
+                  className={`text-[9px] font-bold px-2 py-0.5 rounded-full w-fit mt-1 ${goalTranslations[userProfile.goalType]?.color || 'bg-surface-2 text-muted'}`}
+                >
+                  {goalTranslations[userProfile.goalType]?.label || userProfile.goalType}
+                </div>
+              ) : (
+                <div 
+                  className="text-[9px] font-bold text-accent-2 bg-accent-2/10 px-2 py-0.5 rounded-full w-fit mt-1 hover:bg-accent-2/20 transition-all"
+                >
+                  ✨ Добавь цель
+                </div>
+              )}
+              <div className="text-[9px] text-muted uppercase font-semibold tracking-[0.15em] mt-1">{weekLabel}</div>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -1750,6 +1916,9 @@ function AppContent() {
               measurements={measurements}
               activeSubTab={activeProgressTab}
               setActiveSubTab={setActiveProgressTab}
+              chartMetric={chartMetric}
+              setChartMetric={setChartMetric}
+              userProfile={userProfile}
             />
           )}
           {activeTab === 'measurements' && (
@@ -3355,21 +3524,38 @@ function ProfilePage({
       }, photoFile);
       setNotification({ show: true, title: 'Сохранено', message: 'Профиль обновлён ✓' });
       setIsEditing(false);
-    } catch (error) {
+      setPhotoFile(null); // Clear local file state after success
+    } catch (error: any) {
       console.error("Error saving profile:", error);
+      setNotification({ 
+        show: true, 
+        title: 'Ошибка', 
+        message: error.message || 'Не удалось сохранить профиль. Попробуйте позже.' 
+      });
     } finally {
       setIsSaving(false);
     }
   };
 
   const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!photoFile) {
+      setPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(photoFile);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [photoFile]);
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }} className="space-y-8 pb-12">
       <div className="flex items-center gap-4 mb-8">
         <div className="relative w-16 h-16 bg-accent/10 rounded-3xl flex items-center justify-center text-accent overflow-hidden">
-          {photoFile ? (
-            <img src={URL.createObjectURL(photoFile)} alt="Profile" className="w-full h-full object-cover" />
+          {previewUrl ? (
+            <img src={previewUrl} alt="Profile" className="w-full h-full object-cover" />
           ) : profile?.photoURL ? (
             <img src={profile.photoURL} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
           ) : (
@@ -3892,7 +4078,10 @@ function ProgressPage({
   onUpdateStrength,
   measurements,
   activeSubTab,
-  setActiveSubTab
+  setActiveSubTab,
+  chartMetric,
+  setChartMetric,
+  userProfile
 }: { 
   user: User | null;
   workouts: Workout[]; 
@@ -3907,6 +4096,9 @@ function ProgressPage({
   measurements: WeightMeasurement[];
   activeSubTab: 'workouts' | 'body';
   setActiveSubTab: (tab: 'workouts' | 'body') => void;
+  chartMetric: 'weight' | 'volume' | 'reps';
+  setChartMetric: (metric: 'weight' | 'volume' | 'reps') => void;
+  userProfile: UserProfile | null;
 }) {
   const [editingWorkoutId, setEditingWorkoutId] = useState<string | null>(null);
   const [editWorkoutDate, setEditWorkoutDate] = useState('');
@@ -4275,128 +4467,145 @@ function ProgressPage({
               </motion.div>
             </div>
 
-            {/* Record Form */}
-            <div className="bg-surface border-2 border-border rounded-[32px] p-6 shadow-sm space-y-6">
-              <h3 className="font-display text-xl text-accent font-bold">Записать результат</h3>
-              <div className="space-y-4">
-                <select 
-                  className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-[13px] font-bold outline-none focus:border-accent transition-all appearance-none"
-                  value={strengthExercise}
-                  onChange={(e) => setStrengthExercise(e.target.value)}
-                >
-                  {Object.entries(programData).map(([day, p]: [string, any]) => (
-                    <optgroup key={day} label={`${day} — ${p.subtitle}`}>
-                      {p.exercises?.filter((ex: any) => !ex.isCardio && !ex.bodyweight).map((ex: any, idx: number) => (
-                        <option key={`${day}-${ex.name}-${idx}`} value={ex.name}>{ex.name}</option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-                <div className="grid grid-cols-2 gap-3">
-                  <input 
-                    type="number" 
-                    placeholder="Вес (кг)"
-                    className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
-                    value={strengthWeight}
-                    onChange={(e) => setStrengthWeight(e.target.value)}
-                  />
-                  <input 
-                    type="number" 
-                    placeholder="Повторы"
-                    className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
-                    value={strengthReps}
-                    onChange={(e) => setStrengthReps(e.target.value)}
-                  />
-                </div>
-                <button 
-                  onClick={handleSaveStrength}
-                  className="w-full py-4 bg-accent text-white font-bold text-sm uppercase tracking-widest rounded-2xl shadow-lg transition-all active:scale-95"
-                >
-                  Сохранить
-                </button>
-              </div>
-            </div>
-
             {/* Strength Cards */}
             <div className="space-y-4">
-              {Object.entries(strengthByExercise).map(([name, entries]) => {
-                const sorted = [...entries].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-                const latest = sorted[sorted.length - 1];
-                const best = sorted.reduce((max, e) => e.weight > max.weight ? e : max, sorted[0]);
-                const chartData = sorted.map(e => ({ date: format(new Date(e.date), 'd MMM', { locale: ru }), weight: e.weight }));
+              <div className="flex gap-2 mb-2 px-2 overflow-x-auto no-scrollbar">
+                {[
+                  { id: 'weight', label: 'Вес' },
+                  { id: 'volume', label: 'Объём' },
+                  { id: 'reps', label: 'Повторы' }
+                ].map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => setChartMetric(m.id as any)}
+                    className={`text-[10px] px-3 py-1.5 rounded-xl font-bold uppercase transition-all whitespace-nowrap ${
+                      chartMetric === m.id ? 'bg-accent text-white shadow-md' : 'bg-surface-2 text-muted hover:bg-surface-3'
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
 
-                return (
-                  <div key={name} className="bg-surface border-2 border-border rounded-3xl p-6 space-y-4 shadow-sm">
-                    <h4 className="text-[14px] font-bold text-text">{name}</h4>
-                    <div className="grid grid-cols-3 gap-2">
-                      <div className="bg-surface-2/50 p-3 rounded-2xl text-center">
-                        <div className="text-[8px] text-muted uppercase font-bold mb-1">Сейчас</div>
-                        <div className="text-xl font-display font-bold text-accent">{latest.weight}</div>
-                      </div>
-                      <div className="bg-accent-2/10 p-3 rounded-2xl text-center">
-                        <div className="text-[8px] text-muted uppercase font-bold mb-1">Рекорд</div>
-                        <div className="text-xl font-display font-bold text-accent-2">{best.weight}</div>
-                      </div>
-                      <div className="bg-done/10 p-3 rounded-2xl text-center">
-                        <div className="text-[8px] text-muted uppercase font-bold mb-1">Цель</div>
-                        <div className="text-xl font-display font-bold text-done">{latest.weight + 1}</div>
-                      </div>
-                    </div>
-                    
-                    <div className="h-[80px] w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={chartData}>
-                          <Line 
-                            type="monotone" 
-                            dataKey="weight" 
-                            stroke="var(--color-accent)" 
-                            strokeWidth={2} 
-                            dot={false} 
-                          />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-
-                    <div className="space-y-2 pt-2 border-t border-border/30">
-                      {[...sorted].reverse().slice(0, 3).map((entry, idx) => (
-                        <div key={entry.id || idx} className="flex justify-between items-center">
-                          {editingStrengthId === entry.id ? (
-                            <div className="flex gap-2 items-center w-full">
-                              <input 
-                                type="number" 
-                                value={editStrengthWeight} 
-                                onChange={(e) => setEditStrengthWeight(e.target.value)}
-                                className="w-16 bg-surface-2 border border-border p-1 rounded-lg text-xs font-bold"
-                              />
-                              <input 
-                                type="number" 
-                                value={editStrengthReps} 
-                                onChange={(e) => setEditStrengthReps(e.target.value)}
-                                className="w-12 bg-surface-2 border border-border p-1 rounded-lg text-xs font-bold"
-                              />
-                              <button onClick={handleSaveEditStrength} className="text-done"><Check size={14}/></button>
-                              <button onClick={() => setEditingStrengthId(null)} className="text-muted"><X size={14}/></button>
-                            </div>
-                          ) : (
-                            <>
-                              <span className="text-[12px] text-muted font-medium">
-                                {format(new Date(entry.date), 'd MMM', { locale: ru })}
-                              </span>
-                              <div className="flex items-center gap-3">
-                                <span className="font-bold text-text text-[13px]">{entry.weight}кг × {entry.reps}</span>
-                                <div className="flex gap-1">
-                                  <button onClick={() => handleStartEditStrength(entry)} className="p-1 text-muted hover:text-accent"><Edit2 size={12}/></button>
-                                  <button onClick={() => onDeleteStrength(entry.id!)} className="p-1 text-muted hover:text-red-500"><Trash2 size={12}/></button>
-                                </div>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      ))}
-                    </div>
+              {Object.keys(strengthByExercise).length === 0 ? (
+                <div className="bg-surface border-2 border-dashed border-border rounded-3xl p-10 text-center">
+                  <div className="w-16 h-16 bg-accent/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <TrendingUp className="text-accent w-8 h-8" />
                   </div>
-                );
-              })}
+                  <h4 className="text-text font-bold mb-2">Здесь будет ваш прогресс</h4>
+                  <p className="text-muted text-xs leading-relaxed">
+                    Завершите тренировку во вкладке «Сегодня», и графики по упражнениям появятся здесь автоматически.
+                  </p>
+                </div>
+              ) : (
+                Object.entries(strengthByExercise).map(([name, entries]) => {
+                  const sorted = [...entries].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                  const latest = sorted[sorted.length - 1];
+                  const best = sorted.reduce((max, e) => e.weight > max.weight ? e : max, sorted[0]);
+                  const chartData = sorted.map(e => ({ 
+                    date: format(new Date(e.date), 'd MMM', { locale: ru }), 
+                    weight: e.weight,
+                    volume: e.volume || (e.weight * e.reps),
+                    reps: e.reps,
+                    rawDate: e.date
+                  }));
+
+                  const goalChangedAt = userProfile?.goalChangedAt;
+
+                  return (
+                    <div key={name} className="bg-surface border-2 border-border rounded-3xl p-6 space-y-4 shadow-sm">
+                      <h4 className="text-[14px] font-bold text-text">{name}</h4>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="bg-surface-2/50 p-3 rounded-2xl text-center">
+                          <div className="text-[8px] text-muted uppercase font-bold mb-1">Сейчас</div>
+                          <div className="text-xl font-display font-bold text-accent">
+                            {chartMetric === 'weight' ? latest.weight : chartMetric === 'volume' ? (latest.volume || (latest.weight * latest.reps)) : latest.reps}
+                          </div>
+                        </div>
+                        <div className="bg-accent-2/10 p-3 rounded-2xl text-center">
+                          <div className="text-[8px] text-muted uppercase font-bold mb-1">Рекорд</div>
+                          <div className="text-xl font-display font-bold text-accent-2">
+                            {chartMetric === 'weight' ? best.weight : chartMetric === 'volume' ? Math.max(...sorted.map(e => e.volume || (e.weight * e.reps))) : Math.max(...sorted.map(e => e.reps))}
+                          </div>
+                        </div>
+                        <div className="bg-done/10 p-3 rounded-2xl text-center">
+                          <div className="text-[8px] text-muted uppercase font-bold mb-1">Цель</div>
+                          <div className="text-xl font-display font-bold text-done">
+                            {chartMetric === 'weight' ? latest.weight + 1 : chartMetric === 'volume' ? Math.round((latest.volume || (latest.weight * latest.reps)) * 1.05) : latest.reps + 2}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="h-[100px] w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={chartData}>
+                            <XAxis dataKey="date" hide />
+                            <YAxis hide domain={['auto', 'auto']} />
+                            <Tooltip 
+                              contentStyle={{ backgroundColor: 'var(--color-surface)', borderRadius: '12px', border: '1px solid var(--color-border)', fontSize: '10px' }}
+                              labelStyle={{ color: 'var(--color-accent)', fontWeight: 'bold' }}
+                            />
+                            {goalChangedAt && (
+                              <ReferenceLine 
+                                x={format(new Date(goalChangedAt), 'd MMM', { locale: ru })} 
+                                stroke="var(--color-accent-2)" 
+                                strokeDasharray="3 3" 
+                                label={{ value: 'Цель', position: 'top', fill: 'var(--color-accent-2)', fontSize: 8 }}
+                              />
+                            )}
+                            <Line 
+                              type="monotone" 
+                              dataKey={chartMetric} 
+                              stroke="var(--color-accent)" 
+                              strokeWidth={2} 
+                              dot={false} 
+                              animationDuration={1000}
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+
+                      <div className="space-y-2 pt-2 border-t border-border/30">
+                        {[...sorted].reverse().slice(0, 3).map((entry, idx) => (
+                          <div key={entry.id || idx} className="flex justify-between items-center">
+                            {editingStrengthId === entry.id ? (
+                              <div className="flex gap-2 items-center w-full">
+                                <input 
+                                  type="number" 
+                                  value={editStrengthWeight} 
+                                  onChange={(e) => setEditStrengthWeight(e.target.value)}
+                                  className="w-16 bg-surface-2 border border-border p-1 rounded-lg text-xs font-bold"
+                                />
+                                <input 
+                                  type="number" 
+                                  value={editStrengthReps} 
+                                  onChange={(e) => setEditStrengthReps(e.target.value)}
+                                  className="w-12 bg-surface-2 border border-border p-1 rounded-lg text-xs font-bold"
+                                />
+                                <button onClick={handleSaveEditStrength} className="text-done"><Check size={14}/></button>
+                                <button onClick={() => setEditingStrengthId(null)} className="text-muted"><X size={14}/></button>
+                              </div>
+                            ) : (
+                              <>
+                                <span className="text-[12px] text-muted font-medium">
+                                  {format(new Date(entry.date), 'd MMM', { locale: ru })}
+                                </span>
+                                <div className="flex items-center gap-3">
+                                  <span className="font-bold text-text text-[13px]">{entry.weight}кг × {entry.reps}</span>
+                                  <div className="flex gap-1">
+                                    <button onClick={() => handleStartEditStrength(entry)} className="p-1 text-muted hover:text-accent"><Edit2 size={12}/></button>
+                                    <button onClick={() => onDeleteStrength(entry.id!)} className="p-1 text-muted hover:text-red-500"><Trash2 size={12}/></button>
+                                  </div>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
 
             {/* History */}
