@@ -24,6 +24,8 @@ import {
   PlusCircle,
   MinusCircle,
   TrendingUp,
+  Target,
+  Zap,
   Activity,
   Scale,
   BookOpen,
@@ -43,6 +45,7 @@ import {
   RotateCcw,
   Bell,
   Mic,
+  HelpCircle,
   Square,
   Trophy,
   Moon,
@@ -172,6 +175,8 @@ interface StrengthRecord {
   maxWeight?: number;
   totalReps?: number;
   setsCount?: number;
+  unit?: string;
+  isBodyweight?: boolean;
 }
 
 interface UserProfile {
@@ -457,6 +462,107 @@ const DAYS_OF_WEEK = [
   'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'
 ];
 
+function GuideModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) {
+  if (!isOpen) return null;
+
+  const steps = [
+    {
+      title: "1. Постановка цели",
+      icon: <Target className="text-accent" />,
+      text: "Напишите в профиле свою цель своими словами (например, «хочу стать сильнее» или «похудеть к лету»). Наш ИИ автоматически определит тип вашей программы: Сила, Гипертрофия, Жиросжигание и т.д. Вся аналитика будет считаться именно от даты установки этой цели."
+    },
+    {
+      title: "2. Запись тренировки",
+      icon: <Dumbbell className="text-accent-2" />,
+      text: "Во вкладке «Сегодня» отмечайте выполненные упражнения и записывайте вес и повторы для каждого подхода. Это фундамент для ваших будущих рекордов."
+    },
+    {
+      title: "3. Умный анализ",
+      icon: <Zap className="text-done" />,
+      text: "После нажатия кнопки «Завершить», система мгновенно рассчитывает: Общий объём (сколько тонн вы подняли), Средний рабочий вес, Максимальный вес и Суммарные повторы. Эти данные сохраняются в вашу личную историю достижений."
+    },
+    {
+      title: "4. Персональная прогрессия",
+      icon: <TrendingUp className="text-accent" />,
+      text: "На следующей тренировке в поле «Подсказка» вы увидите конкретную числовую цель. Система сравнит ваши последние 3 сессии и, исходя из вашей цели, скажет: пора ли добавить вес, увеличить количество повторов или оставить нагрузку прежней для восстановления."
+    },
+    {
+      title: "5. Визуальный прогресс",
+      icon: <BarChart3 className="text-accent-2" />,
+      text: "Во вкладке «Прогресс» вы увидите графики по каждому упражнению. Метрика графика подстраивается под вашу цель: для набора массы это Объём, для силы — Максимальный вес, для выносливости — Повторы."
+    },
+    {
+      title: "6. Анализ тела ИИ",
+      icon: <Camera className="text-accent" />,
+      text: "Загрузите 3 фото (фас, бок, спина) в чат с ИИ-коучем. Система проведет глубокий анализ вашей композиции тела, осанки и мышечного баланса, чтобы составить максимально точный план и поставить реалистичные цели."
+    }
+  ];
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        className="bg-surface border-2 border-border rounded-[32px] w-full max-w-lg max-h-[85vh] overflow-hidden flex flex-col shadow-2xl"
+      >
+        <div className="p-6 border-b border-border flex justify-between items-center bg-surface-2/50">
+          <h2 className="font-display text-2xl text-accent font-bold">Как это работает</h2>
+          <button onClick={onClose} className="w-10 h-10 rounded-xl bg-surface border border-border flex items-center justify-center text-muted hover:text-accent transition-all">
+            <X size={20} />
+          </button>
+        </div>
+        
+        <div className="flex-1 overflow-y-auto p-6 space-y-8 no-scrollbar">
+          <div className="bg-accent/5 border border-accent/10 rounded-2xl p-4 text-[13px] text-text leading-relaxed">
+            Добро пожаловать в <strong>FitTrack Pro</strong>! Это не просто дневник тренировок, а ваш персональный аналитик, который помогает прогрессировать научно обоснованно.
+          </div>
+
+          <div className="space-y-6">
+            {steps.map((step, idx) => (
+              <div key={idx} className="flex gap-4">
+                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-surface-2 border border-border flex items-center justify-center shadow-sm">
+                  {step.icon}
+                </div>
+                <div className="space-y-1">
+                  <h4 className="font-bold text-text text-sm">{step.title}</h4>
+                  <p className="text-muted text-[12px] leading-relaxed">{step.text}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="pt-4 border-t border-border">
+            <h4 className="font-bold text-accent text-xs uppercase tracking-widest mb-3">Правила прогрессии</h4>
+            <div className="grid grid-cols-1 gap-3">
+              <div className="bg-surface-2 p-3 rounded-xl border border-border">
+                <div className="text-[10px] font-bold text-accent mb-1 uppercase">Гипертрофия</div>
+                <div className="text-[11px] text-muted">Вес растет только если Объем рос 2 сессии подряд. Цель: +5% к объему.</div>
+              </div>
+              <div className="bg-surface-2 p-3 rounded-xl border border-border">
+                <div className="text-[10px] font-bold text-accent-2 mb-1 uppercase">Сила</div>
+                <div className="text-[11px] text-muted">Постоянный малый прирост веса (+2.5%) при условии выполнения всех подходов.</div>
+              </div>
+              <div className="bg-surface-2 p-3 rounded-xl border border-border">
+                <div className="text-[10px] font-bold text-done mb-1 uppercase">Жиросжигание</div>
+                <div className="text-[11px] text-muted">Главное — удержать Объем. Если он стабилен — добавляем повторы.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-6 bg-surface-2/50 border-t border-border">
+          <button 
+            onClick={onClose}
+            className="w-full py-4 bg-accent text-white font-bold text-sm uppercase tracking-widest rounded-2xl shadow-lg active:scale-95 transition-all"
+          >
+            Понятно, погнали!
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 // Main App Component
 function AppContent() {
   const [user, setUser] = useState<User | null>(null);
@@ -468,6 +574,7 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState<'today' | 'progress' | 'strength' | 'tech' | 'coach' | 'profile' | 'measurements'>('today');
   const [activeProgressTab, setActiveProgressTab] = useState<'workouts' | 'body'>('workouts');
   const [chartMetric, setChartMetric] = useState<'weight' | 'volume' | 'reps'>('weight');
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [coachMessages, setCoachMessages] = useState<any[]>([]);
   const [isCoachLoading, setIsCoachLoading] = useState(false);
   const [programData, setProgramData] = useState<Record<string, any>>(PROGRAM);
@@ -499,9 +606,9 @@ function AppContent() {
   
   // Today's state
   const [currentDay, setCurrentDay] = useState('День 1');
-  const [checkedExercises, setCheckedExercises] = useState<number[]>([]);
-  const [currentSets, setCurrentSets] = useState<Record<number, any[][]>>({});
-  const [currentNotes, setCurrentNotes] = useState<Record<number, string>>({});
+  const [checkedExercises, setCheckedExercises] = useState<Record<string, number[]>>({});
+  const [currentSets, setCurrentSets] = useState<Record<string, Record<number, any[][]>>>({});
+  const [currentNotes, setCurrentNotes] = useState<Record<string, Record<number, string>>>({});
   const [isWorkoutStateLoading, setIsWorkoutStateLoading] = useState(true);
 
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -602,7 +709,14 @@ function AppContent() {
       if (snapshot.exists()) {
         const data = snapshot.data();
         setCurrentDay(prev => prev !== data.currentDay ? (data.currentDay || 'День 1') : prev);
-        setCheckedExercises(prev => JSON.stringify(prev) !== JSON.stringify(data.checkedExercises || []) ? (data.checkedExercises || []) : prev);
+        setCheckedExercises(prev => {
+          let checked = data.checkedExercises || {};
+          if (Array.isArray(checked)) {
+            // Migration: if it's an array, it's old data, put it in the current day
+            checked = { [data.currentDay || 'День 1']: checked };
+          }
+          return JSON.stringify(prev) !== JSON.stringify(checked) ? checked : prev;
+        });
         setCurrentSets(prev => {
           let sets = data.currentSets || {};
           if (typeof sets === 'string') {
@@ -612,9 +726,20 @@ function AppContent() {
               sets = {};
             }
           }
+          if (sets && !sets['День 1'] && !sets['День 2'] && Object.keys(sets).some(k => !isNaN(Number(k)))) {
+            // Migration: if it's a flat object with numeric keys, it's old data
+            sets = { [data.currentDay || 'День 1']: sets };
+          }
           return JSON.stringify(prev) !== JSON.stringify(sets) ? sets : prev;
         });
-        setCurrentNotes(prev => JSON.stringify(prev) !== JSON.stringify(data.currentNotes || {}) ? (data.currentNotes || {}) : prev);
+        setCurrentNotes(prev => {
+          let notes = data.currentNotes || {};
+          if (notes && !notes['День 1'] && !notes['День 2'] && Object.keys(notes).some(k => !isNaN(Number(k)))) {
+            // Migration: if it's a flat object with numeric keys, it's old data
+            notes = { [data.currentDay || 'День 1']: notes };
+          }
+          return JSON.stringify(prev) !== JSON.stringify(notes) ? notes : prev;
+        });
       }
       setIsWorkoutStateLoading(false);
     }, (error) => {
@@ -845,7 +970,11 @@ function AppContent() {
         currentDay: updatedDay,
         // If program changed significantly, we might want to clear progress
         // but for now let's just keep it if the day still exists
-        ...(updatedDay !== currentDay ? { checkedExercises: [], currentSets: {}, currentNotes: {} } : {})
+        ...(updatedDay !== currentDay ? { 
+          checkedExercises: { ...checkedExercises, [updatedDay]: [] }, 
+          currentSets: { ...currentSets, [updatedDay]: {} }, 
+          currentNotes: { ...currentNotes, [updatedDay]: {} } 
+        } : {})
       });
 
       // Removed alert for better mobile/iframe compatibility
@@ -1139,16 +1268,20 @@ function AppContent() {
       day: currentDay,
       exercises: programData[currentDay].exercises.map((ex: any, i: number) => ({
         name: ex.name,
-        sets: currentSets[i]?.map(s => ({ weight: Number(s[0]) || 0, reps: Number(s[1]) || 0 })) || []
+        sets: (currentSets[currentDay] || {})[i]?.map((s: any) => ({ weight: Number(s[0]) || 0, reps: Number(s[1]) || 0 })) || []
       })),
-      notes: Object.values(currentNotes).join('\n')
+      notes: Object.values(currentNotes[currentDay] || {}).join('\n')
     };
 
     try {
       await addDoc(collection(db, 'workouts'), workoutToSave);
       
       // Automatically save best sets to strength records
-      for (const ex of workoutToSave.exercises) {
+      const dayExercises = programData[currentDay].exercises;
+      for (let i = 0; i < workoutToSave.exercises.length; i++) {
+        const ex = workoutToSave.exercises[i];
+        const originalEx = dayExercises[i];
+        
         if (ex.sets.length > 0) {
           // Find best set (highest weight, then highest reps)
           const bestSet = ex.sets.reduce((prev, curr) => {
@@ -1164,7 +1297,8 @@ function AppContent() {
           const maxWeight = Math.max(...ex.sets.map(s => s.weight));
           const setsCount = ex.sets.length;
 
-          if (bestSet.weight > 0 || volume > 0) {
+          // Save if it's either a weight exercise or a bodyweight/cardio exercise with some result
+          if (bestSet.weight > 0 || totalReps > 0 || volume > 0) {
             await handleSaveStrength({
               exercise: ex.name,
               weight: bestSet.weight,
@@ -1173,7 +1307,9 @@ function AppContent() {
               avgWeight,
               maxWeight,
               totalReps,
-              setsCount
+              setsCount,
+              unit: originalEx.unit || 'кг',
+              isBodyweight: originalEx.bodyweight || originalEx.isCardio || false
             });
           }
         }
@@ -1184,11 +1320,21 @@ function AppContent() {
       const nextIdx = (days.indexOf(currentDay) + 1) % days.length;
       const nextDay = days[nextIdx];
       
+      const updatedChecked = { ...checkedExercises, [currentDay]: [] };
+      const updatedSets = { ...currentSets, [currentDay]: {} };
+      const updatedNotes = { ...currentNotes, [currentDay]: {} };
+
+      // Update local state immediately
+      setCurrentDay(nextDay);
+      setCheckedExercises(updatedChecked);
+      setCurrentSets(updatedSets);
+      setCurrentNotes(updatedNotes);
+
       await saveWorkoutState({
         currentDay: nextDay,
-        checkedExercises: [],
-        currentSets: {},
-        currentNotes: {}
+        checkedExercises: updatedChecked,
+        currentSets: updatedSets,
+        currentNotes: updatedNotes
       });
       
       setNotification({
@@ -1823,6 +1969,12 @@ function AppContent() {
               </div>
             )}
             <button 
+              onClick={() => setIsGuideOpen(true)}
+              className="w-10 h-10 rounded-xl bg-surface border border-border flex items-center justify-center text-accent hover:border-accent/50 transition-all"
+            >
+              <HelpCircle size={20} />
+            </button>
+            <button 
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
               className="w-10 h-10 rounded-xl bg-surface border border-border flex items-center justify-center text-accent hover:border-accent/50 transition-all"
             >
@@ -1843,12 +1995,27 @@ function AppContent() {
             <TodayPage 
               currentDay={currentDay}
               setCurrentDay={setCurrentDay}
-              checkedExercises={checkedExercises}
-              setCheckedExercises={setCheckedExercises}
-              currentSets={currentSets}
-              setCurrentSets={setCurrentSets}
-              currentNotes={currentNotes}
-              setCurrentNotes={setCurrentNotes}
+              checkedExercises={checkedExercises[currentDay] || []}
+              setCheckedExercises={(newChecked: number[] | ((prev: number[]) => number[])) => {
+                setCheckedExercises(prev => ({
+                  ...prev,
+                  [currentDay]: typeof newChecked === 'function' ? newChecked(prev[currentDay] || []) : newChecked
+                }));
+              }}
+              currentSets={currentSets[currentDay] || {}}
+              setCurrentSets={(newSets: any | ((prev: any) => any)) => {
+                setCurrentSets(prev => ({
+                  ...prev,
+                  [currentDay]: typeof newSets === 'function' ? newSets(prev[currentDay] || {}) : newSets
+                }));
+              }}
+              currentNotes={currentNotes[currentDay] || {}}
+              setCurrentNotes={(newNotes: any | ((prev: any) => any)) => {
+                setCurrentNotes(prev => ({
+                  ...prev,
+                  [currentDay]: typeof newNotes === 'function' ? newNotes(prev[currentDay] || {}) : newNotes
+                }));
+              }}
               onFinish={handleFinishWorkout}
               workouts={workouts}
               programData={programData}
@@ -1870,9 +2037,9 @@ function AppContent() {
                     title: 'Сброс прогресса',
                     message: 'Сбросить текущий прогресс тренировки?',
                     onConfirm: () => {
-                      setCheckedExercises([]);
-                      setCurrentSets({});
-                      setCurrentNotes({});
+                      setCheckedExercises(prev => ({ ...prev, [currentDay]: [] }));
+                      setCurrentSets(prev => ({ ...prev, [currentDay]: {} }));
+                      setCurrentNotes(prev => ({ ...prev, [currentDay]: {} }));
                       setConfirmDialog(null);
                     }
                   });
@@ -1946,6 +2113,7 @@ function AppContent() {
               setTheme={setTheme}
               setCoachMessages={setCoachMessages}
               setNotification={setNotification}
+              onShowGuide={() => setIsGuideOpen(true)}
             />
           )}
           {activeTab === 'strength' && (
@@ -2050,6 +2218,8 @@ function AppContent() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <GuideModal isOpen={isGuideOpen} onClose={() => setIsGuideOpen(false)} />
 
       {/* Bottom Navigation */}
       <div className="fixed bottom-0 left-0 right-0 bg-surface border-t border-border pb-safe pt-2 px-2 z-50 flex justify-around items-center shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
@@ -2628,14 +2798,33 @@ function CoachPage({
       const ai = new GoogleGenAI({ apiKey: currentApiKey });
       const modelName = "gemini-3-flash-preview";
       
-      const systemPrompt = `Ты — профессиональный ИИ-фитнес-тренер. Твой стиль: объективный, конструктивный, лаконичный. Ты анализируешь данные тренировок, замеров и силовых рекордов. Твоя цель — помочь пользователю достичь спортивных результатов безопасно и эффективно.
+      const systemPrompt = `Ты — профессиональный ИИ-фитнес-тренер. Твой стиль: профессиональный, объективный, конструктивный, лаконичный, без осуждения. Ты анализируешь данные тренировок, замеров и силовых рекордов. Твоя цель — помочь пользователю достичь спортивных результатов безопасно и эффективно.
 ОБЯЗАТЕЛЬНО учитывай пол, возраст и цели пользователя при составлении рекомендаций и ответов.
+
+ПРИ АНАЛИЗЕ ТЕЛА ПО ФОТО РУКОВОДСТВУЙСЯ СЛЕДУЮЩИМИ ИНСТРУКЦИЯМИ:
+Что анализировать:
+1. Композиция тела: Визуальная оценка процента жира (живот, бока, грудь, бёдра), соотношение мышечной массы и жира, тип телосложения (эктоморф, мезоморф, эндоморф или смешанный).
+2. Осанка: Положение головы, плеч, грудного отдела (сутулость, кифоз), поясничного отдела (лордоз, плоская спина), таза (наклон), коленей (вальгус, варус).
+3. Мышечный дисбаланс: Какие группы развиты хорошо, какие отстают, асимметрия, признаки доминирования одних мышц над другими.
+4. Проблемные зоны: Места сосредоточения жира, визуальные признаки слабости мышц.
+5. Приоритеты работы: 3-5 конкретных задач (например, "укрепить задние дельты", "активировать ягодицы").
+
+ФОРМАТ ОТВЕТА (ОБЯЗАТЕЛЬНО НА РУССКОМ):
+Раздел 1 — Композиция тела: Тип телосложения, визуальный % жира, зоны накопления.
+Раздел 2 — Осанка: Описание элементов (голова, плечи и т.д.), что в норме, что отклонено.
+Раздел 3 — Мышечный баланс: Что развито хорошо, что отстаёт, асимметрия.
+Раздел 4 — Проблемные зоны: Конкретные места с пояснением.
+Раздел 5 — Приоритеты работы: 3-5 задач в порядке важности с 1-2 упражнениями для каждой.
+
+ВАЖНО:
+- Не говори "у вас лишний вес" — говори "есть резерв для снижения жировой массы".
+- Анализируй только то, что видишь на фото. Если не видно — так и скажи.
+- Для полного анализа нужны 3 фото: спереди, сзади и сбоку в полный рост, в облегающей одежде или без нее, в нейтральной позе.
+
 Ты можешь:
 1. Обновлять программу тренировок (инструмент update_training_program).
 2. Обновлять технику выполнения упражнений (инструмент update_tech_data).
-3. Добавлять замеры биоимпеданса (инструмент add_bioimpedance_measurement).
-Все данные о теле (замеры, вес) предоставлены исключительно в фитнес-целях.
-Ты также можешь анализировать прикрепленные изображения, видео и файлы (например, PDF или текстовые документы с результатами анализов или программами).`;
+3. Добавлять замеры биоимпеданса (инструмент add_bioimpedance_measurement).`;
 
       const dataContext = `
         ПЕРЕМЕННЫЕ ПОЛЬЗОВАТЕЛЯ (ДЛЯ АНАЛИЗА):
@@ -3172,10 +3361,35 @@ function CoachPage({
           </div>
         )}
         {messages.length === 0 && (
-          <div className="text-center py-12 opacity-50">
-            <Sparkles className="mx-auto mb-4 text-accent" size={32} />
-            <p className="text-sm font-medium">Привет! Я твой ИИ тренер. <br/> Спроси меня о прогрессе, технике или пришли фото формы! ✨</p>
-          </div>
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-accent/10 border border-accent/20 rounded-3xl p-6 text-center space-y-4 mx-2"
+          >
+            <div className="w-16 h-16 bg-accent/20 rounded-full flex items-center justify-center mx-auto">
+              <Camera size={32} className="text-accent" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="font-bold text-text">Персональный анализ тела</h3>
+              <p className="text-sm text-muted leading-relaxed">
+                Для составления максимально точного плана тренировок и анализа осанки, пожалуйста, добавьте 3 фотографии:
+              </p>
+              <div className="grid grid-cols-3 gap-2 pt-2">
+                <div className="bg-surface p-2 rounded-xl border border-border text-[10px] font-bold">ФАС</div>
+                <div className="bg-surface p-2 rounded-xl border border-border text-[10px] font-bold">ПРОФИЛЬ</div>
+                <div className="bg-surface p-2 rounded-xl border border-border text-[10px] font-bold">СПИНА</div>
+              </div>
+              <p className="text-[11px] text-muted italic pt-2">
+                * Фото в полный рост, в облегающей одежде, руки вдоль тела.
+              </p>
+            </div>
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              className="bg-accent text-white px-6 py-3 rounded-2xl font-bold text-sm shadow-lg shadow-accent/20 active:scale-95 transition-all"
+            >
+              Добавить фото
+            </button>
+          </motion.div>
         )}
         <AnimatePresence initial={false}>
           {messages.map((m: any, i: number) => (
@@ -3395,7 +3609,8 @@ function ProfilePage({
   theme,
   setTheme,
   setCoachMessages,
-  setNotification
+  setNotification,
+  onShowGuide
 }: { 
   profile: UserProfile | null; 
   onUpdate: (data: any, photoFile?: File) => Promise<void>; 
@@ -3407,6 +3622,7 @@ function ProfilePage({
   setTheme: (theme: 'light' | 'dark') => void;
   setCoachMessages: (messages: any[]) => void;
   setNotification: (notif: any) => void;
+  onShowGuide: () => void;
 }) {
   const [name, setName] = useState(profile?.displayName || '');
   const [age, setAge] = useState(profile?.age?.toString() || '');
@@ -3692,6 +3908,22 @@ function ProfilePage({
         )}
       </div>
 
+      <button 
+        onClick={onShowGuide}
+        className="w-full bg-surface border-2 border-accent/20 rounded-[32px] p-6 flex items-center justify-between hover:border-accent/50 transition-all shadow-sm group"
+      >
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-accent/10 rounded-2xl flex items-center justify-center text-accent group-hover:scale-110 transition-transform">
+            <HelpCircle size={24} />
+          </div>
+          <div className="text-left">
+            <h4 className="text-sm font-bold text-text uppercase tracking-widest">Как это работает?</h4>
+            <p className="text-[10px] text-muted">Гайд по системе прогрессии и целям</p>
+          </div>
+        </div>
+        <ChevronRight size={20} className="text-accent/50 group-hover:text-accent transition-colors" />
+      </button>
+
       <div className="bg-surface border-2 border-border rounded-[32px] p-4 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-accent/10 rounded-xl flex items-center justify-center text-accent">
@@ -3857,6 +4089,13 @@ function TodayPage({
           </div>
         </div>
         <div className="flex gap-2">
+          <button 
+            onClick={onReset}
+            className="flex items-center gap-2 px-3 py-1.5 bg-red-50 text-red-500 rounded-xl text-[10px] font-bold uppercase tracking-wider hover:bg-red-100 transition-all border border-red-100"
+          >
+            <RotateCcw size={14} />
+            Сброс
+          </button>
           <button 
             onClick={onEditProgram}
             className="flex items-center gap-2 px-3 py-1.5 bg-accent/10 text-accent rounded-xl text-[10px] font-bold uppercase tracking-wider hover:bg-accent/20 transition-all"
@@ -4514,36 +4753,61 @@ function ProgressPage({
 
                   return (
                     <div key={name} className="bg-surface border-2 border-border rounded-3xl p-6 space-y-4 shadow-sm">
-                      <h4 className="text-[14px] font-bold text-text">{name}</h4>
+                      <div className="flex justify-between items-center">
+                        <h4 className="text-[14px] font-bold text-text">{name}</h4>
+                        {latest.isBodyweight && (
+                          <span className="text-[8px] bg-accent/10 text-accent px-2 py-0.5 rounded-full uppercase font-bold tracking-tighter">
+                            Собств. вес
+                          </span>
+                        )}
+                      </div>
+                      
                       <div className="grid grid-cols-3 gap-2">
                         <div className="bg-surface-2/50 p-3 rounded-2xl text-center">
                           <div className="text-[8px] text-muted uppercase font-bold mb-1">Сейчас</div>
                           <div className="text-xl font-display font-bold text-accent">
-                            {chartMetric === 'weight' ? latest.weight : chartMetric === 'volume' ? (latest.volume || (latest.weight * latest.reps)) : latest.reps}
+                            {chartMetric === 'weight' ? (latest.isBodyweight ? latest.reps : latest.weight) : 
+                             chartMetric === 'volume' ? (latest.isBodyweight ? latest.reps : (latest.volume || (latest.weight * latest.reps))) : 
+                             latest.reps}
+                            <span className="text-[10px] ml-0.5 opacity-70">
+                              {chartMetric === 'weight' ? (latest.isBodyweight ? latest.unit : 'кг') : 
+                               chartMetric === 'volume' ? (latest.isBodyweight ? latest.unit : 'кг') : 
+                               latest.unit || 'раз'}
+                            </span>
                           </div>
                         </div>
                         <div className="bg-accent-2/10 p-3 rounded-2xl text-center">
                           <div className="text-[8px] text-muted uppercase font-bold mb-1">Рекорд</div>
                           <div className="text-xl font-display font-bold text-accent-2">
-                            {chartMetric === 'weight' ? best.weight : chartMetric === 'volume' ? Math.max(...sorted.map(e => e.volume || (e.weight * e.reps))) : Math.max(...sorted.map(e => e.reps))}
+                            {chartMetric === 'weight' ? (latest.isBodyweight ? Math.max(...sorted.map(e => e.reps)) : best.weight) : 
+                             chartMetric === 'volume' ? (latest.isBodyweight ? Math.max(...sorted.map(e => e.reps)) : Math.max(...sorted.map(e => e.volume || (e.weight * e.reps)))) : 
+                             Math.max(...sorted.map(e => e.reps))}
                           </div>
                         </div>
                         <div className="bg-done/10 p-3 rounded-2xl text-center">
                           <div className="text-[8px] text-muted uppercase font-bold mb-1">Цель</div>
                           <div className="text-xl font-display font-bold text-done">
-                            {chartMetric === 'weight' ? latest.weight + 1 : chartMetric === 'volume' ? Math.round((latest.volume || (latest.weight * latest.reps)) * 1.05) : latest.reps + 2}
+                            {chartMetric === 'weight' ? (latest.isBodyweight ? latest.reps + (latest.unit === 'сек' ? 5 : 2) : latest.weight + 1) : 
+                             chartMetric === 'volume' ? (latest.isBodyweight ? latest.reps + (latest.unit === 'сек' ? 10 : 5) : Math.round((latest.volume || (latest.weight * latest.reps)) * 1.05)) : 
+                             latest.reps + (latest.unit === 'сек' ? 5 : 2)}
                           </div>
                         </div>
                       </div>
                       
                       <div className="h-[100px] w-full">
                         <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={chartData}>
+                          <LineChart data={chartData.map(d => ({
+                            ...d,
+                            displayValue: chartMetric === 'weight' ? (latest.isBodyweight ? d.reps : d.weight) :
+                                         chartMetric === 'volume' ? (latest.isBodyweight ? d.reps : d.volume) :
+                                         d.reps
+                          }))}>
                             <XAxis dataKey="date" hide />
                             <YAxis hide domain={['auto', 'auto']} />
                             <Tooltip 
                               contentStyle={{ backgroundColor: 'var(--color-surface)', borderRadius: '12px', border: '1px solid var(--color-border)', fontSize: '10px' }}
                               labelStyle={{ color: 'var(--color-accent)', fontWeight: 'bold' }}
+                              formatter={(value: any) => [`${value} ${latest.isBodyweight ? latest.unit : (chartMetric === 'reps' ? latest.unit : 'кг')}`, 'Результат']}
                             />
                             {goalChangedAt && (
                               <ReferenceLine 
@@ -4555,7 +4819,7 @@ function ProgressPage({
                             )}
                             <Line 
                               type="monotone" 
-                              dataKey={chartMetric} 
+                              dataKey="displayValue" 
                               stroke="var(--color-accent)" 
                               strokeWidth={2} 
                               dot={false} 
@@ -4575,12 +4839,14 @@ function ProgressPage({
                                   value={editStrengthWeight} 
                                   onChange={(e) => setEditStrengthWeight(e.target.value)}
                                   className="w-16 bg-surface-2 border border-border p-1 rounded-lg text-xs font-bold"
+                                  placeholder="кг"
                                 />
                                 <input 
                                   type="number" 
                                   value={editStrengthReps} 
                                   onChange={(e) => setEditStrengthReps(e.target.value)}
                                   className="w-12 bg-surface-2 border border-border p-1 rounded-lg text-xs font-bold"
+                                  placeholder={entry.unit || "раз"}
                                 />
                                 <button onClick={handleSaveEditStrength} className="text-done"><Check size={14}/></button>
                                 <button onClick={() => setEditingStrengthId(null)} className="text-muted"><X size={14}/></button>
@@ -4591,7 +4857,9 @@ function ProgressPage({
                                   {format(new Date(entry.date), 'd MMM', { locale: ru })}
                                 </span>
                                 <div className="flex items-center gap-3">
-                                  <span className="font-bold text-text text-[13px]">{entry.weight}кг × {entry.reps}</span>
+                                  <span className="font-bold text-text text-[13px]">
+                                    {entry.isBodyweight ? `${entry.reps}${entry.unit || 'раз'}` : `${entry.weight}кг × ${entry.reps}`}
+                                  </span>
                                   <div className="flex gap-1">
                                     <button onClick={() => handleStartEditStrength(entry)} className="p-1 text-muted hover:text-accent"><Edit2 size={12}/></button>
                                     <button onClick={() => onDeleteStrength(entry.id!)} className="p-1 text-muted hover:text-red-500"><Trash2 size={12}/></button>
@@ -4844,78 +5112,27 @@ function ProgressPage({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                {[selectedMeasure1, selectedMeasure2].map((id, idx) => {
-                  const m = measurements.find(item => item.id === id);
-                  if (!m) return <div key={idx} className="aspect-square bg-surface-2/50 rounded-2xl border-2 border-dashed border-border" />;
-                  return (
-                    <div key={idx} className="bg-surface-2/50 rounded-2xl p-3 space-y-2">
-                      {m.photos && m.photos.length > 0 ? (
-                        <img src={m.photos[0]} alt="Preview" className="w-full aspect-square object-cover rounded-xl mb-2" />
-                      ) : (
-                        <div className="w-full aspect-square bg-surface rounded-xl flex items-center justify-center mb-2">
-                          <Camera size={24} className="text-muted/30" />
-                        </div>
-                      )}
-                      <div className="text-center">
-                        <div className="text-[11px] font-bold text-text">{format(new Date(m.date), 'd MMMM yyyy', { locale: ru })}</div>
-                        {m.weight && <div className="text-[10px] text-muted">{m.weight} кг</div>}
-                        {(m.fat || m.muscle) && (
-                          <div className="text-[10px] text-accent">
-                            {m.fat && `Жир: ${m.fat}%`} {m.muscle && `Мышцы: ${m.muscle}кг`}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
               <button 
                 onClick={handleAnalyze}
                 disabled={isAnalyzing || !selectedMeasure1 || !selectedMeasure2}
-                className="w-full py-4 bg-gradient-to-r from-accent to-accent-2 text-white font-bold text-sm uppercase tracking-widest rounded-2xl shadow-lg shadow-accent/20 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:scale-100"
+                className="w-full py-4 bg-accent text-white font-bold text-sm uppercase tracking-widest rounded-2xl shadow-lg transition-all active:scale-95 disabled:opacity-50 disabled:scale-100"
               >
-                {isAnalyzing ? (
-                  <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}>
-                    <Dumbbell size={20} />
-                  </motion.div>
-                ) : (
-                  <>
-                    <Sparkles size={20} />
-                    <span>Проанализировать</span>
-                  </>
-                )}
+                {isAnalyzing ? 'Анализирую...' : 'Сравнить замеры'}
               </button>
 
-              <AnimatePresence>
-                {analysisError && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-500 text-xs font-bold text-center"
-                  >
-                    {analysisError}
-                  </motion.div>
-                )}
+              {analysisError && (
+                <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-500 text-xs font-bold text-center">
+                  {analysisError}
+                </div>
+              )}
 
-                {analysisResult && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="p-6 bg-surface-2 border-2 border-border rounded-3xl shadow-inner space-y-4"
-                  >
-                    <div className="flex items-center gap-2 text-accent">
-                      <Bot size={18} />
-                      <span className="text-[10px] font-bold uppercase tracking-widest">Результат анализа</span>
-                    </div>
-                    <div className="prose prose-sm prose-invert max-w-none text-text text-sm leading-relaxed">
-                      <ReactMarkdown>{analysisResult}</ReactMarkdown>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              {analysisResult && (
+                <div className="space-y-4">
+                  <div className="p-6 bg-surface-2/50 border-2 border-border rounded-3xl text-[13px] leading-relaxed text-text markdown-body">
+                    <ReactMarkdown>{analysisResult}</ReactMarkdown>
+                  </div>
+                </div>
+              )}
             </div>
           </motion.div>
         )}
@@ -4924,11 +5141,9 @@ function ProgressPage({
   );
 }
 
-function StatItem({ value, label }: { value: any; label: string }) {
-  const valueStr = String(value);
-  const valueSize = valueStr.length > 5 ? 'text-xl' : 'text-2xl';
+function StatItem({ value, label, valueSize = "text-3xl" }: { value: string | number, label: string, valueSize?: string }) {
   return (
-    <div className="bg-surface border-2 border-border rounded-3xl p-5 text-center shadow-sm flex flex-col justify-center min-h-[100px]">
+    <div className="bg-surface border-2 border-border rounded-3xl p-5 text-center shadow-sm">
       <div className={`font-display ${valueSize} text-accent font-bold leading-none mb-2 break-words`}>{value}</div>
       <div className="text-[10px] text-muted uppercase font-bold tracking-wider">{label}</div>
     </div>
@@ -4961,14 +5176,22 @@ function StrengthPage({
   useEffect(() => {
     if (!exercise && programData) {
       for (const day of Object.values(programData) as any[]) {
-        const firstStrength = day.exercises?.find((ex: any) => !ex.isCardio && !ex.bodyweight);
-        if (firstStrength) {
-          setExercise(firstStrength.name);
+        const firstEx = day.exercises?.[0];
+        if (firstEx) {
+          setExercise(firstEx.name);
           break;
         }
       }
     }
   }, [programData, exercise]);
+
+  const selectedExDef = useMemo(() => {
+    for (const day of Object.values(programData) as any[]) {
+      const ex = day.exercises?.find((e: any) => e.name === exercise);
+      if (ex) return ex;
+    }
+    return null;
+  }, [exercise, programData]);
 
   const strengthByExercise = useMemo(() => {
     const groups: Record<string, StrengthRecord[]> = {};
@@ -4980,8 +5203,15 @@ function StrengthPage({
   }, [records]);
 
   const handleSave = () => {
-    if (!weight || !reps || !exercise) return;
-    onSave({ exercise, weight: Number(weight), reps: Number(reps) });
+    if (!reps || !exercise) return;
+    const isBW = selectedExDef?.bodyweight || selectedExDef?.isCardio;
+    onSave({ 
+      exercise, 
+      weight: isBW ? 0 : Number(weight), 
+      reps: Number(reps),
+      unit: selectedExDef?.unit || (isBW ? 'раз' : 'кг'),
+      isBodyweight: isBW || false
+    });
     setWeight('');
     setReps('');
   };
@@ -5022,7 +5252,7 @@ function StrengthPage({
           >
             {Object.entries(programData).map(([day, p]: [string, any]) => (
               <optgroup key={day} label={`${day} — ${p.subtitle}`}>
-                {p.exercises?.filter((ex: any) => !ex.isCardio && !ex.bodyweight).map((ex: any, idx: number) => (
+                {p.exercises?.map((ex: any, idx: number) => (
                   <option key={`${day}-${ex.name}-${idx}`} value={ex.name}>{ex.name}</option>
                 ))}
               </optgroup>
@@ -5031,14 +5261,15 @@ function StrengthPage({
           <div className="grid grid-cols-2 gap-3">
             <input 
               type="number" 
-              placeholder="Вес (кг)"
-              className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
+              placeholder={selectedExDef?.bodyweight || selectedExDef?.isCardio ? "—" : "Вес (кг)"}
+              disabled={selectedExDef?.bodyweight || selectedExDef?.isCardio}
+              className={`w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all ${selectedExDef?.bodyweight || selectedExDef?.isCardio ? 'opacity-50 cursor-not-allowed' : ''}`}
               value={weight}
               onChange={(e) => setWeight(e.target.value)}
             />
             <input 
               type="number" 
-              placeholder="Повторы"
+              placeholder={selectedExDef?.unit || "Повторы"}
               className="w-full bg-surface-2 border-2 border-border text-text p-4 rounded-2xl text-xl font-bold outline-none focus:border-accent transition-all"
               value={reps}
               onChange={(e) => setReps(e.target.value)}
@@ -5065,28 +5296,43 @@ function StrengthPage({
           Object.entries(strengthByExercise).map(([name, entries]) => {
             const sorted = [...entries].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
             const latest = sorted[sorted.length - 1];
-            const best = sorted.reduce((max, e) => e.weight > max.weight ? e : max, sorted[0]);
-            const chartData = sorted.map(e => ({ date: format(new Date(e.date), 'd MMM', { locale: ru }), weight: e.weight }));
+            const isBW = latest.isBodyweight;
+            const unit = latest.unit || 'кг';
+            const best = sorted.reduce((max, e) => (isBW ? e.reps : e.weight) > (isBW ? max.reps : max.weight) ? e : max, sorted[0]);
+            const chartData = sorted.map(e => ({ 
+              date: format(new Date(e.date), 'd MMM', { locale: ru }), 
+              value: isBW ? e.reps : e.weight 
+            }));
 
             return (
               <div key={name} className="bg-surface border-2 border-border rounded-3xl p-6 space-y-4 shadow-sm">
                 <div className="flex justify-between items-center">
-                  <h4 className="text-[14px] font-bold text-text">{name}</h4>
+                  <div className="flex flex-col">
+                    <h4 className="text-[14px] font-bold text-text">{name}</h4>
+                    {isBW && <span className="text-[8px] text-accent font-bold uppercase">Собственный вес</span>}
+                  </div>
                   <Trophy size={16} className="text-accent-2" />
                 </div>
                 
                 <div className="grid grid-cols-3 gap-2">
                   <div className="bg-surface-2/50 p-3 rounded-2xl text-center">
                     <div className="text-[8px] text-muted uppercase font-bold mb-1">Сейчас</div>
-                    <div className="text-xl font-display font-bold text-accent">{latest.weight}</div>
+                    <div className="text-xl font-display font-bold text-accent">
+                      {isBW ? latest.reps : latest.weight}
+                      <span className="text-[10px] ml-0.5 opacity-70">{unit}</span>
+                    </div>
                   </div>
                   <div className="bg-accent-2/10 p-3 rounded-2xl text-center">
                     <div className="text-[8px] text-muted uppercase font-bold mb-1">Рекорд</div>
-                    <div className="text-xl font-display font-bold text-accent-2">{best.weight}</div>
+                    <div className="text-xl font-display font-bold text-accent-2">
+                      {isBW ? best.reps : best.weight}
+                    </div>
                   </div>
                   <div className="bg-done/10 p-3 rounded-2xl text-center">
                     <div className="text-[8px] text-muted uppercase font-bold mb-1">Цель</div>
-                    <div className="text-xl font-display font-bold text-done">{latest.weight + 1}</div>
+                    <div className="text-xl font-display font-bold text-done">
+                      {isBW ? latest.reps + (unit === 'сек' ? 5 : 2) : latest.weight + 1}
+                    </div>
                   </div>
                 </div>
                 
@@ -5095,7 +5341,7 @@ function StrengthPage({
                     <LineChart data={chartData}>
                       <Line 
                         type="monotone" 
-                        dataKey="weight" 
+                        dataKey="value" 
                         stroke="var(--color-accent)" 
                         strokeWidth={2} 
                         dot={false} 
@@ -5109,12 +5355,14 @@ function StrengthPage({
                     <div key={entry.id || idx} className="flex justify-between items-center">
                       {editingId === entry.id ? (
                         <div className="flex gap-2 items-center w-full">
-                          <input 
-                            type="number" 
-                            value={editWeight} 
-                            onChange={(e) => setEditWeight(e.target.value)}
-                            className="w-16 bg-surface-2 border border-border p-1 rounded-lg text-xs font-bold"
-                          />
+                          {!isBW && (
+                            <input 
+                              type="number" 
+                              value={editWeight} 
+                              onChange={(e) => setEditWeight(e.target.value)}
+                              className="w-16 bg-surface-2 border border-border p-1 rounded-lg text-xs font-bold"
+                            />
+                          )}
                           <input 
                             type="number" 
                             value={editReps} 
@@ -5127,7 +5375,7 @@ function StrengthPage({
                       ) : (
                         <>
                           <div className="text-[10px] font-bold text-text">
-                            {format(new Date(entry.date), 'd MMM', { locale: ru })}: {entry.weight}кг × {entry.reps}
+                            {format(new Date(entry.date), 'd MMM', { locale: ru })}: {isBW ? `${entry.reps}${unit}` : `${entry.weight}кг × ${entry.reps}`}
                           </div>
                           <div className="flex gap-2">
                             <button onClick={() => handleStartEdit(entry)} className="text-muted hover:text-accent p-1"><Edit2 size={14} /></button>
