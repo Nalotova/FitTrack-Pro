@@ -70,7 +70,10 @@ import {
   ResponsiveContainer, 
   AreaChart, 
   Area,
-  ReferenceLine
+  ReferenceLine,
+  BarChart,
+  Bar,
+  Cell
 } from 'recharts';
 import { format, parseISO, subDays, isSameDay, startOfMonth, endOfMonth, differenceInDays, startOfWeek, subWeeks, subMonths, isWithinInterval, endOfWeek, eachDayOfInterval, isSameMonth, addMonths } from 'date-fns';
 import { ru } from 'date-fns/locale';
@@ -1046,16 +1049,46 @@ function AppContent() {
           throw new Error("Файл слишком большой. Максимальный размер 5МБ.");
         }
 
-        const storageRef = ref(storage, `users/${user.uid}/profile.jpg`);
-        
-        // Add a timeout for upload to prevent infinite hanging
-        const uploadPromise = uploadBytes(storageRef, photoFile);
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error("Превышено время ожидания загрузки фото. Проверьте интернет-соединение.")), 30000)
-        );
-        
-        await Promise.race([uploadPromise, timeoutPromise]);
-        photoURL = await getDownloadURL(storageRef);
+        // Convert to base64 and resize to fit in Firestore document
+        photoURL = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              const MAX_WIDTH = 300;
+              const MAX_HEIGHT = 300;
+              let width = img.width;
+              let height = img.height;
+
+              if (width > height) {
+                if (width > MAX_WIDTH) {
+                  height *= MAX_WIDTH / width;
+                  width = MAX_WIDTH;
+                }
+              } else {
+                if (height > MAX_HEIGHT) {
+                  width *= MAX_HEIGHT / height;
+                  height = MAX_HEIGHT;
+                }
+              }
+
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                ctx.drawImage(img, 0, 0, width, height);
+                resolve(canvas.toDataURL('image/jpeg', 0.8));
+              } else {
+                reject(new Error("Не удалось обработать изображение"));
+              }
+            };
+            img.onerror = () => reject(new Error("Не удалось загрузить изображение"));
+            img.src = e.target?.result as string;
+          };
+          reader.onerror = () => reject(new Error("Не удалось прочитать файл"));
+          reader.readAsDataURL(photoFile);
+        });
       }
       
       const updateData: any = { ...data, photoURL: photoURL || null, updatedAt: new Date().toISOString() };
@@ -1764,10 +1797,10 @@ function AppContent() {
         <motion.div 
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="max-w-md w-full bg-surface p-10 rounded-[40px] shadow-2xl border border-border"
+          className="max-w-md w-full bg-surface p-6 sm:p-10 rounded-[40px] shadow-2xl border border-border"
         >
-          <div className="logo text-5xl mb-4 font-display font-bold text-accent">FitTrack-Pro <span className="text-accent-2">·</span> Тренировки</div>
-          <p className="text-muted mb-10 text-lg font-medium">Твой личный фитнес-дневник для сияющих результатов! ✨</p>
+          <div className="logo text-3xl sm:text-4xl md:text-5xl mb-4 font-display font-bold text-accent leading-tight">FitTrack-Pro <br className="sm:hidden" /><span className="text-accent-2">·</span> Тренировки</div>
+          <p className="text-muted mb-8 sm:mb-10 text-base sm:text-lg font-medium">Твой личный фитнес-дневник для сияющих результатов! ✨</p>
           
           <div className="space-y-4">
             <button 
@@ -2182,14 +2215,16 @@ function ProgramEditor({ program, onSave, onClose }: { program: any; onSave: (da
 
   const addExercise = (day: string, type: 'strength' | 'cardio') => {
     const isCardio = type === 'cardio';
-    const newExercise = {
+    const newExercise: any = {
       name: isCardio ? 'Бег / Ходьба' : 'Новое упражнение',
       scheme: isCardio ? '30 мин' : '3 x 12',
       sets: isCardio ? 1 : 3,
       tip: '',
-      isCardio: isCardio,
-      fields: isCardio ? ["мин", "км", "пульс"] : undefined
+      isCardio: isCardio
     };
+    if (isCardio) {
+      newExercise.fields = ["мин", "км", "пульс"];
+    }
     setLocalProgram((prev: any) => ({
       ...prev,
       [day]: {
@@ -2227,13 +2262,20 @@ function ProgramEditor({ program, onSave, onClose }: { program: any; onSave: (da
       
       // If toggling isCardio, update all exercises in this day
       if (field === 'isCardio') {
-        newDay.exercises = newDay.exercises.map((ex: any) => ({
-          ...ex,
-          isCardio: value,
-          fields: value ? (ex.fields || ["мин", "км", "пульс"]) : undefined,
-          sets: value ? (ex.sets === 3 ? 1 : ex.sets) : (ex.sets === 1 ? 3 : ex.sets),
-          scheme: value ? (ex.scheme === '3 x 12' ? '30 мин' : ex.scheme) : (ex.scheme === '30 мин' ? '3 x 12' : ex.scheme)
-        }));
+        newDay.exercises = newDay.exercises.map((ex: any) => {
+          const updatedEx = {
+            ...ex,
+            isCardio: value,
+            sets: value ? (ex.sets === 3 ? 1 : ex.sets) : (ex.sets === 1 ? 3 : ex.sets),
+            scheme: value ? (ex.scheme === '3 x 12' ? '30 мин' : ex.scheme) : (ex.scheme === '30 мин' ? '3 x 12' : ex.scheme)
+          };
+          if (value) {
+            updatedEx.fields = ex.fields || ["мин", "км", "пульс"];
+          } else {
+            delete updatedEx.fields;
+          }
+          return updatedEx;
+        });
       }
       
       return {
@@ -4715,14 +4757,26 @@ function ProgressPage({
     const data = [];
 
     if (activityPeriod === '8w') {
-      for (let i = 7; i >= 0; i--) {
+      if (workouts.length < 4) return [];
+      const sortedWorkouts = [...workouts].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      const firstWorkoutDate = new Date(sortedWorkouts[0].date);
+      
+      let weeksDiff = Math.ceil((now.getTime() - firstWorkoutDate.getTime()) / (1000 * 60 * 60 * 24 * 7));
+      if (weeksDiff < 2) weeksDiff = 2; // Show at least 2 points for a line
+      if (weeksDiff > 8) weeksDiff = 8;
+      
+      for (let i = weeksDiff - 1; i >= 0; i--) {
         const weekStart = startOfWeek(subWeeks(now, i), { weekStartsOn: 1 });
         const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
         const count = workouts.filter(w => {
           const d = new Date(w.date);
           return isWithinInterval(d, { start: weekStart, end: weekEnd });
         }).length;
-        data.push({ name: `Нед ${8-i}`, count });
+        data.push({ 
+          name: format(weekStart, 'd MMM', { locale: ru }), 
+          count,
+          isActive: count >= 2
+        });
       }
     } else if (activityPeriod === '6m') {
       for (let i = 5; i >= 0; i--) {
@@ -4732,7 +4786,7 @@ function ProgressPage({
           const d = new Date(w.date);
           return isWithinInterval(d, { start: monthStart, end: monthEnd });
         }).length;
-        data.push({ name: format(monthStart, 'MMM', { locale: ru }), count });
+        data.push({ name: format(monthStart, 'MMM', { locale: ru }), count, isActive: count >= 4 });
       }
     } else if (activityPeriod === 'all') {
       if (workouts.length === 0) return [];
@@ -4749,7 +4803,7 @@ function ProgressPage({
           const d = new Date(w.date);
           return isWithinInterval(d, { start: mStart, end: mEnd });
         }).length;
-        data.push({ name: format(mStart, 'MMM', { locale: ru }), count });
+        data.push({ name: format(mStart, 'MMM', { locale: ru }), count, isActive: count >= 4 });
         // Add one month
         current = new Date(current.getFullYear(), current.getMonth() + 1, 1);
       }
@@ -4894,58 +4948,93 @@ function ProgressPage({
               <StatItem value={stats.streak} label="недель" />
             </div>
 
-            {/* Activity Chart */}
-            <div className="bg-surface border-2 border-border rounded-3xl p-5 shadow-sm">
-              <div className="flex justify-between items-center mb-3">
-                <h4 className="text-[10px] text-muted uppercase font-bold tracking-widest">Активность</h4>
-                <div className="flex gap-1 bg-surface-2/50 rounded-xl p-1">
-                  {[
-                    { id: '8w', label: '8 нед' },
-                    { id: '6m', label: '6 мес' },
-                    { id: 'all', label: 'Всё' }
-                  ].map(p => (
-                    <button
-                      key={p.id}
-                      onClick={() => setActivityPeriod(p.id as any)}
-                      className={`${activityPeriod === p.id ? 'bg-accent text-white rounded-lg' : 'text-muted hover:text-accent'} px-3 py-1 text-[10px] font-bold transition-all`}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
+            {/* Activity Chart or Motivational Card */}
+            {workouts.length < 4 ? (
+              <div className="bg-gradient-to-br from-surface to-surface-2 border-2 border-accent/20 rounded-3xl p-6 shadow-sm text-center">
+                <div className="w-16 h-16 bg-accent/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Dumbbell className="text-accent w-8 h-8" />
+                </div>
+                <h4 className="text-lg font-bold text-text mb-2">Начало положено!</h4>
+                <p className="text-muted text-sm mb-4">
+                  Сделай еще {4 - workouts.length} {4 - workouts.length === 1 ? 'тренировку' : 'тренировки'}, чтобы разблокировать график твоей активности и следить за прогрессом.
+                </p>
+                <div className="w-full bg-bg rounded-full h-3 overflow-hidden">
+                  <motion.div 
+                    initial={{ width: 0 }}
+                    animate={{ width: `${(workouts.length / 4) * 100}%` }}
+                    className="h-full bg-accent"
+                  />
+                </div>
+                <p className="text-[10px] text-muted font-bold uppercase tracking-widest mt-2">{workouts.length} из 4</p>
+              </div>
+            ) : (
+              <div className="bg-surface border-2 border-border rounded-3xl p-5 shadow-sm">
+                <div className="flex justify-between items-center mb-3">
+                  <h4 className="text-[10px] text-muted uppercase font-bold tracking-widest">Активность</h4>
+                  <div className="flex gap-1 bg-surface-2/50 rounded-xl p-1">
+                    {[
+                      { id: '8w', label: '8 нед' },
+                      { id: '6m', label: '6 мес' },
+                      { id: 'all', label: 'Всё' }
+                    ].map(p => (
+                      <button
+                        key={p.id}
+                        onClick={() => setActivityPeriod(p.id as any)}
+                        className={`${activityPeriod === p.id ? 'bg-accent text-white rounded-lg' : 'text-muted hover:text-accent'} px-3 py-1 text-[10px] font-bold transition-all`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <motion.div 
+                  key={activityPeriod}
+                  initial={{ opacity: 0 }} 
+                  animate={{ opacity: 1 }} 
+                  transition={{ duration: 0.2 }}
+                  className="h-[140px] w-full"
+                >
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={activityData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
+                      <XAxis 
+                        dataKey="name" 
+                        axisLine={false} 
+                        tickLine={false} 
+                        tick={{ fontSize: 10, fontWeight: 'bold', fill: 'var(--color-muted)' }} 
+                        dy={10}
+                      />
+                      <Tooltip 
+                        cursor={{ fill: 'var(--color-surface-2)', opacity: 0.5 }}
+                        contentStyle={{ backgroundColor: 'var(--color-surface)', borderRadius: '12px', border: '2px solid var(--color-border)', fontSize: '10px', fontWeight: 'bold' }}
+                        itemStyle={{ color: 'var(--color-accent)' }}
+                      />
+                      <Bar 
+                        dataKey="count" 
+                        radius={[4, 4, 0, 0]}
+                        maxBarSize={40}
+                      >
+                        {activityData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.isActive ? 'var(--color-accent)' : 'var(--color-border)'} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </motion.div>
+                <div className="mt-4 text-center">
+                  <p className="text-xs font-bold text-accent-2 bg-accent-2/10 inline-block px-3 py-1.5 rounded-xl">
+                    {(() => {
+                      if (activityData.length < 2) return "Отличное начало! Первый шаг сделан ✨";
+                      const last = activityData[activityData.length - 1].count;
+                      const prev = activityData[activityData.length - 2].count;
+                      if (last > prev) return "Ты в ритме! Лучшие 2 недели подряд 🔥";
+                      if (last < prev) return "На прошлой неделе было тише — вернёмся в ритм? 💙";
+                      return "Стабильность — основа прогресса ✓";
+                    })()}
+                  </p>
                 </div>
               </div>
-              <motion.div 
-                key={activityPeriod}
-                initial={{ opacity: 0 }} 
-                animate={{ opacity: 1 }} 
-                transition={{ duration: 0.2 }}
-                className="h-[120px] w-full"
-              >
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={activityData}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
-                    <XAxis 
-                      dataKey="name" 
-                      axisLine={false} 
-                      tickLine={false} 
-                      tick={{ fontSize: 10, fontWeight: 'bold', fill: 'var(--color-muted)' }} 
-                    />
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: 'var(--color-surface)', borderRadius: '12px', border: '2px solid var(--color-border)', fontSize: '10px', fontWeight: 'bold' }}
-                      itemStyle={{ color: 'var(--color-accent)' }}
-                    />
-                    <Area 
-                      type="monotone" 
-                      dataKey="count" 
-                      stroke="var(--color-accent)" 
-                      fill="var(--color-accent)" 
-                      fillOpacity={0.15} 
-                      strokeWidth={3}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </motion.div>
-            </div>
+            )}
 
             {/* Strength Cards */}
             <div className="space-y-4">
