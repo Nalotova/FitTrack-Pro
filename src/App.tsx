@@ -6067,6 +6067,19 @@ function WeightPage({
             <p className="text-[10px] text-muted uppercase font-bold tracking-widest">Антропометрия и биоимпеданс</p>
           </div>
         </div>
+
+        <div className="bg-accent/5 border border-accent/20 rounded-3xl p-6 mb-8 flex gap-4 items-start">
+          <div className="w-10 h-10 bg-accent/10 rounded-2xl flex-shrink-0 flex items-center justify-center text-accent">
+            <Sparkles size={20} />
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-accent mb-1">Автоматическое заполнение</h4>
+            <p className="text-xs text-muted leading-relaxed">
+              Есть готовый биоимпеданс или скрин из другого приложения? 
+              Просто отправь файл или скриншот мне в чат, и я сам внесу все данные в твой профиль.
+            </p>
+          </div>
+        </div>
         
         <div className="space-y-8">
           <div>
