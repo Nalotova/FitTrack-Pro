@@ -6463,14 +6463,14 @@ function WeightPage({
                     </div>
                     {(m.chest || m.waist || m.waistHigh || m.waistNavel || m.waistWidest || m.hips || m.bicep || m.thigh) && (
                       <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[10px] text-muted font-bold uppercase">
-                        {m.chest && <span>Грудь: {m.chest}</span>}
-                        {m.waist && <span>Талия: {m.waist}</span>}
-                        {m.waistHigh && <span>Талия выс: {m.waistHigh}</span>}
-                        {m.waistNavel && <span>Талия пупок: {m.waistNavel}</span>}
-                        {m.waistWidest && <span>Самое жирное: {m.waistWidest}</span>}
-                        {m.hips && <span>Бёдра: {m.hips}</span>}
-                        {m.bicep && <span>Бицепс: {m.bicep}</span>}
-                        {m.thigh && <span>Бедро: {m.thigh}</span>}
+                        {m.chest != null && m.chest != 0 && <span>Грудь: {m.chest}</span>}
+                        {m.waist != null && m.waist != 0 && <span>Талия: {m.waist}</span>}
+                        {m.waistHigh != null && m.waistHigh != 0 && <span>Талия выс: {m.waistHigh}</span>}
+                        {m.waistNavel != null && m.waistNavel != 0 && <span>Талия пупок: {m.waistNavel}</span>}
+                        {m.waistWidest != null && m.waistWidest != 0 && <span>Самое жирное: {m.waistWidest}</span>}
+                        {m.hips != null && m.hips != 0 && <span>Бёдра: {m.hips}</span>}
+                        {m.bicep != null && m.bicep != 0 && <span>Бицепс: {m.bicep}</span>}
+                        {m.thigh != null && m.thigh != 0 && <span>Бедро: {m.thigh}</span>}
                       </div>
                     )}
                     <div className="text-[10px] text-muted font-bold uppercase opacity-60 flex flex-wrap gap-x-2">
