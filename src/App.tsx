@@ -132,6 +132,7 @@ interface Workout {
   day: string;
   exercises: Exercise[];
   notes?: string;
+  isCardio?: boolean;
 }
 
 interface WeightMeasurement {
@@ -180,6 +181,7 @@ interface StrengthRecord {
   setsCount?: number;
   unit?: string;
   isBodyweight?: boolean;
+  isCardio?: boolean;
 }
 
 interface UserProfile {
@@ -1172,7 +1174,8 @@ function AppContent() {
         name: ex.name,
         sets: (currentSets[currentDay] || {})[i]?.map((s: any) => ({ weight: Number(s[0]) || 0, reps: Number(s[1]) || 0 })) || []
       })),
-      notes: Object.values(currentNotes[currentDay] || {}).join('\n')
+      notes: Object.values(currentNotes[currentDay] || {}).join('\n'),
+      isCardio: programData[currentDay].isCardio || false
     };
 
     try {
@@ -1199,8 +1202,8 @@ function AppContent() {
           const maxWeight = Math.max(...ex.sets.map(s => s.weight));
           const setsCount = ex.sets.length;
 
-          // Save if it's either a weight exercise or a bodyweight/cardio exercise with some result
-          if (bestSet.weight > 0 || totalReps > 0 || volume > 0) {
+          // Save if it's a strength exercise (not cardio) and has some result
+          if (!originalEx.isCardio && !programData[currentDay].isCardio && (bestSet.weight > 0 || totalReps > 0 || volume > 0)) {
             await handleSaveStrength({
               exercise: ex.name,
               weight: bestSet.weight,
@@ -1211,7 +1214,8 @@ function AppContent() {
               totalReps,
               setsCount,
               unit: originalEx.unit || 'кг',
-              isBodyweight: originalEx.bodyweight || originalEx.isCardio || false
+              isBodyweight: originalEx.bodyweight || false,
+              isCardio: false
             });
           }
         }
@@ -4889,11 +4893,20 @@ function ProgressPage({
   const strengthByExercise = useMemo(() => {
     const groups: Record<string, StrengthRecord[]> = {};
     strengthRecords.forEach(r => {
+      // Filter out cardio exercises from progress cards
+      if (r.isCardio) return;
+      
+      // Double check by looking at program data if isCardio flag is missing (for older records)
+      const isCardioInProgram = Object.values(programData || {}).some((day: any) => 
+        day.exercises?.some((ex: any) => ex.name === r.exercise && (ex.isCardio || day.isCardio))
+      );
+      if (isCardioInProgram) return;
+
       if (!groups[r.exercise]) groups[r.exercise] = [];
       groups[r.exercise].push(r);
     });
     return groups;
-  }, [strengthRecords]);
+  }, [strengthRecords, programData]);
 
   const handleSaveStrength = () => {
     if (!strengthWeight || !strengthReps || !strengthExercise) return;
