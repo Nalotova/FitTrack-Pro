@@ -154,7 +154,7 @@ service cloud.firestore {
     }
 
     function isValidStrengthRecord(data) {
-      let allowedFields = ['userId', 'date', 'exercise', 'weight', 'reps', 'volume', 'avgWeight', 'maxWeight', 'totalReps', 'setsCount', 'unit', 'isBodyweight'];
+      let allowedFields = ['userId', 'date', 'exercise', 'weight', 'reps', 'volume', 'avgWeight', 'maxWeight', 'totalReps', 'setsCount', 'unit', 'isBodyweight', 'isCardio'];
       return data.keys().hasAll(['userId', 'date', 'exercise', 'weight', 'reps']) &&
              data.keys().hasOnly(allowedFields) &&
              data.userId == request.auth.uid &&
@@ -168,7 +168,8 @@ service cloud.firestore {
              (!('totalReps' in data) || data.totalReps is number) &&
              (!('setsCount' in data) || data.setsCount is number) &&
              (!('unit' in data) || data.unit is string) &&
-             (!('isBodyweight' in data) || data.isBodyweight is bool);
+             (!('isBodyweight' in data) || data.isBodyweight is bool) &&
+             (!('isCardio' in data) || data.isCardio is bool);
     }
 
     function isValidTechItem(data) {

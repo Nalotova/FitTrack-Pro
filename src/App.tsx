@@ -567,6 +567,13 @@ function AppContent() {
           if (Array.isArray(checked)) {
             // Migration: if it's an array, it's old data, put it in the current day
             checked = { [data.currentDay || 'День 1']: checked };
+          } else if (typeof checked === 'object') {
+            // Ensure all values are arrays
+            const validatedChecked: Record<string, number[]> = {};
+            Object.keys(checked).forEach(key => {
+              validatedChecked[key] = Array.isArray(checked[key]) ? checked[key] : [];
+            });
+            checked = validatedChecked;
           }
           return JSON.stringify(prev) !== JSON.stringify(checked) ? checked : prev;
         });
@@ -1914,11 +1921,11 @@ function AppContent() {
             <TodayPage 
               currentDay={currentDay}
               setCurrentDay={setCurrentDay}
-              checkedExercises={checkedExercises[currentDay] || []}
+              checkedExercises={Array.isArray(checkedExercises[currentDay]) ? checkedExercises[currentDay] : []}
               setCheckedExercises={(newChecked: number[] | ((prev: number[]) => number[])) => {
                 setCheckedExercises(prev => ({
                   ...prev,
-                  [currentDay]: typeof newChecked === 'function' ? newChecked(prev[currentDay] || []) : newChecked
+                  [currentDay]: typeof newChecked === 'function' ? newChecked(Array.isArray(prev[currentDay]) ? prev[currentDay] : []) : newChecked
                 }));
               }}
               currentSets={currentSets[currentDay] || {}}
@@ -2567,6 +2574,20 @@ function ProgramEditor({ program, onSave, onClose }: { program: any; onSave: (da
                       )}
                     </div>
                   </div>
+                  {ex.isCardio && (
+                    <div className="mt-4 space-y-2">
+                      <label className="text-[10px] text-muted uppercase font-bold tracking-widest ml-1">
+                        Подсказка (необязательно)
+                      </label>
+                      <input 
+                        type="text" 
+                        value={ex.tip || ''}
+                        onChange={(e) => updateExercise(selectedDay, idx, 'tip', e.target.value)}
+                        placeholder="Напр. Держи темп или Следи за пульсом"
+                        className="w-full p-4 bg-surface-2/30 border-2 border-border rounded-2xl text-sm font-bold focus:border-accent outline-none transition-all"
+                      />
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -4360,8 +4381,9 @@ function TodayPage({
     );
   }
 
+  const safeChecked = Array.isArray(checkedExercises) ? checkedExercises : [];
   const total = program.exercises.length;
-  const done = checkedExercises.length;
+  const done = safeChecked.length;
   const pct = Math.round((done / total) * 100);
 
   const isCompletedToday = workouts.some((w: any) => w.day === currentDay && isSameDay(new Date(w.date), new Date()));
@@ -4437,13 +4459,37 @@ function TodayPage({
                 exercise={ex}
                 index={idx}
                 isCardioDay={program.isCardio}
-                isChecked={checkedExercises.includes(idx)}
+                isChecked={safeChecked.includes(idx)}
                 onCheck={() => {
-                  setCheckedExercises((prev: number[]) => 
-                    prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]
-                  );
+                  setCheckedExercises((prev: any) => {
+                    const arr = Array.isArray(prev) ? prev : [];
+                    return arr.includes(idx) ? arr.filter(i => i !== idx) : [...arr, idx];
+                  });
                 }}
                 sets={currentSets[idx] || []}
+                onAddSet={() => {
+                  setCurrentSets((prev: any) => {
+                    const updated = { ...prev };
+                    const isCardio = ex.isCardio || program.isCardio;
+                    const fieldCount = isCardio ? (ex.fields?.length || 3) : 2;
+                    
+                    if (!updated[idx]) {
+                      updated[idx] = Array(ex.sets).fill(null).map(() => Array(fieldCount).fill(''));
+                    }
+                    
+                    updated[idx] = [...updated[idx], Array(fieldCount).fill('')];
+                    return updated;
+                  });
+                }}
+                onRemoveSet={(sIdx: number) => {
+                  setCurrentSets((prev: any) => {
+                    const updated = { ...prev };
+                    if (updated[idx] && updated[idx].length > 1) {
+                      updated[idx] = updated[idx].filter((_: any, i: number) => i !== sIdx);
+                    }
+                    return updated;
+                  });
+                }}
                 onUpdateSet={(sIdx: number, field: number, val: string) => {
                   setCurrentSets((prev: any) => {
                     const updated = { ...prev };
@@ -4488,7 +4534,7 @@ function TodayPage({
   );
 }
 
-function ExerciseCard({ exercise, index, isCardioDay, isChecked, onCheck, sets, onUpdateSet, note, onUpdateNote }: any) {
+function ExerciseCard({ exercise, index, isCardioDay, isChecked, onCheck, sets, onUpdateSet, onAddSet, onRemoveSet, note, onUpdateNote }: any) {
   const [isOpen, setIsOpen] = useState(false);
   const isCardio = exercise.isCardio || isCardioDay;
 
@@ -4517,57 +4563,86 @@ function ExerciseCard({ exercise, index, isCardioDay, isChecked, onCheck, sets, 
       <AnimatePresence>
         {isOpen && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="px-4 pb-4 space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              {Array(exercise.sets).fill(0).map((_, sIdx) => (
-                <div key={sIdx} className="bg-surface-2/50 border border-border rounded-2xl p-3 text-center">
-                  <div className="text-[9px] text-muted uppercase font-bold mb-2">Сет {sIdx + 1}</div>
-                  <div className="flex items-center justify-center gap-2">
-                    {isCardio ? (
-                      <div className="flex gap-2 justify-center">
+            <div className={isCardio ? "space-y-2" : "grid grid-cols-2 gap-3"}>
+              {Array(Math.max(exercise.sets || 0, sets.length)).fill(0).map((_, sIdx) => (
+                <div key={sIdx} className={isCardio ? "flex items-center gap-2" : "bg-surface-2/50 border border-border rounded-2xl p-3 text-center"}>
+                  {isCardio ? (
+                    <>
+                      <div className="text-[10px] text-muted font-bold w-8 flex-shrink-0">С{sIdx + 1}</div>
+                      <div className="flex-1 flex gap-1.5">
                         {(exercise.fields || ["мин", "км", "пульс"]).map((f: string, fi: number) => (
-                          <div key={fi} className="flex flex-col items-center">
+                          <div key={fi} className="flex-1 min-w-0">
                             <input 
                               type="number" 
                               step="any"
-                              className="w-14 bg-surface border-2 border-border text-center text-sm p-2 rounded-xl focus:border-accent outline-none transition-all font-bold"
+                              placeholder={f}
+                              className="w-full bg-surface-2/30 border border-border/50 text-center text-xs p-2 rounded-xl focus:border-accent outline-none transition-all font-mono font-bold"
                               value={sets[sIdx]?.[fi] || ''}
                               onChange={(e) => onUpdateSet(sIdx, fi, e.target.value)}
                             />
-                            <span className="text-[8px] text-muted font-bold mt-1 uppercase">{f}</span>
                           </div>
                         ))}
                       </div>
-                    ) : (
-                      <div className="flex items-center justify-center gap-1">
-                        <div className="flex flex-col items-center">
-                          <input 
-                            type="number" 
-                            className="w-14 bg-surface border-2 border-border text-center text-sm p-2 rounded-xl focus:border-accent outline-none transition-all font-bold"
-                            placeholder={exercise.bodyweight ? "раз" : "кг"}
-                            value={sets[sIdx]?.[0] || ''}
-                            onChange={(e) => onUpdateSet(sIdx, 0, e.target.value)}
-                          />
-                          <span className="text-[8px] text-muted font-bold mt-1 uppercase">{exercise.bodyweight ? 'раз' : 'кг'}</span>
-                        </div>
-                        
-                        {!exercise.bodyweight && (
-                          <>
-                            <span className="text-accent font-bold text-sm mb-5">×</span>
-                            <div className="flex flex-col items-center">
-                              <input 
-                                type="number" 
-                                className="w-14 bg-surface border-2 border-border text-center text-sm p-2 rounded-xl focus:border-accent outline-none transition-all font-bold"
-                                placeholder="раз"
-                                value={sets[sIdx]?.[1] || ''}
-                                onChange={(e) => onUpdateSet(sIdx, 1, e.target.value)}
-                              />
-                              <span className="text-[8px] text-muted font-bold mt-1 uppercase">раз</span>
-                            </div>
-                          </>
+                      <div className="flex gap-1 flex-shrink-0">
+                        {sets.length > 1 ? (
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); onRemoveSet(sIdx); }}
+                            className="w-8 h-8 bg-red-500/10 text-red-500 rounded-lg flex items-center justify-center hover:bg-red-500/20 transition-all"
+                            title="Удалить интервал"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        ) : (
+                          <div className="w-8" />
+                        )}
+                        {sIdx === Math.max(exercise.sets || 0, sets.length) - 1 ? (
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); onAddSet(); }}
+                            className="w-8 h-8 bg-accent/10 text-accent rounded-lg flex items-center justify-center hover:bg-accent/20 transition-all"
+                            title="Добавить интервал"
+                          >
+                            <Plus size={16} />
+                          </button>
+                        ) : (
+                          <div className="w-8" />
                         )}
                       </div>
-                    )}
-                  </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-[9px] text-muted uppercase font-bold mb-2">Сет {sIdx + 1}</div>
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="flex items-center justify-center gap-1">
+                          <div className="flex flex-col items-center">
+                            <input 
+                              type="number" 
+                              className="w-14 bg-surface border-2 border-border text-center text-sm p-2 rounded-xl focus:border-accent outline-none transition-all font-bold"
+                              placeholder={exercise.bodyweight ? "раз" : "кг"}
+                              value={sets[sIdx]?.[0] || ''}
+                              onChange={(e) => onUpdateSet(sIdx, 0, e.target.value)}
+                            />
+                            <span className="text-[8px] text-muted font-bold mt-1 uppercase">{exercise.bodyweight ? 'раз' : 'кг'}</span>
+                          </div>
+                          
+                          {!exercise.bodyweight && (
+                            <>
+                              <span className="text-accent font-bold text-sm mb-5">×</span>
+                              <div className="flex flex-col items-center">
+                                <input 
+                                  type="number" 
+                                  className="w-14 bg-surface border-2 border-border text-center text-sm p-2 rounded-xl focus:border-accent outline-none transition-all font-bold"
+                                  placeholder="раз"
+                                  value={sets[sIdx]?.[1] || ''}
+                                  onChange={(e) => onUpdateSet(sIdx, 1, e.target.value)}
+                                />
+                                <span className="text-[8px] text-muted font-bold mt-1 uppercase">раз</span>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
