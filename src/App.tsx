@@ -440,7 +440,7 @@ function AppContent() {
   const [isTechLoading, setIsTechLoading] = useState(true);
   const [showProgramEditor, setShowProgramEditor] = useState(false);
   const [showTechEditor, setShowTechEditor] = useState(false);
-  const [notification, setNotification] = useState<{show: boolean, title: string, message: string} | null>(null);
+  const [notification, setNotification] = useState<{show: boolean, title: string, message: string, type?: 'info' | 'success' | 'error'} | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
     title: string;
@@ -744,12 +744,14 @@ function AppContent() {
       const avg = last.avgWeight || 0;
       const pAvg = prev?.avgWeight || 0;
 
+      const toTons = (kg: number) => (kg / 1000).toFixed(2) + 'т';
+
       if (prev && vol < pVol * 0.85) {
-        suffix = `Перегрузка! Вес тот же. Цель объём ${Math.round(pVol)}кг`;
+        suffix = `Перегрузка! Вес тот же. Цель объём ${toTons(pVol)}`;
       } else if (prev && prev2 && vol > pVol && pVol > p2Vol && avg >= pAvg) {
-        suffix = `Адаптация! +вес. Цель объём ${Math.round(vol * 1.06)}кг`;
+        suffix = `Адаптация! +вес. Цель объём ${toTons(vol * 1.06)}`;
       } else {
-        suffix = `Цель объём ${Math.round(vol * 1.05)}кг (сейчас ${vol})`;
+        suffix = `Цель объём ${toTons(vol * 1.05)} (сейчас ${toTons(vol)})`;
       }
     } else if (goalType === 'strength') {
       const max = last.maxWeight || last.weight || 0;
@@ -757,10 +759,11 @@ function AppContent() {
     } else if (goalType === 'fat_loss') {
       const vol = last.volume || 0;
       const pVol = prev?.volume || 0;
+      const toTons = (kg: number) => (kg / 1000).toFixed(2) + 'т';
       if (prev && Math.abs(vol - pVol) / pVol < 0.05) {
         suffix = `Стабильно. Цель +1 повтор к подходу`;
       } else {
-        suffix = `Держи объём ${Math.round(vol)}кг`;
+        suffix = `Держи объём ${toTons(vol)}`;
       }
     } else if (goalType === 'endurance') {
       suffix = `Цель +2 повтора к подходу`;
@@ -5509,11 +5512,11 @@ function ProgressPage({
                           <div className="text-[8px] text-muted uppercase font-bold mb-1">Сейчас</div>
                           <div className="text-xl font-display font-bold text-accent">
                             {chartMetric === 'weight' ? (latest.isBodyweight ? latest.reps : latest.weight) : 
-                             chartMetric === 'volume' ? (latest.isBodyweight ? latest.reps : (latest.volume || (latest.weight * latest.reps))) : 
+                             chartMetric === 'volume' ? (latest.isBodyweight ? latest.reps : ((latest.volume || (latest.weight * latest.reps)) / 1000).toFixed(2)) : 
                              latest.reps}
                             <span className="text-[10px] ml-0.5 opacity-70">
                               {chartMetric === 'weight' ? (latest.isBodyweight ? latest.unit : 'кг') : 
-                               chartMetric === 'volume' ? (latest.isBodyweight ? latest.unit : 'кг') : 
+                               chartMetric === 'volume' ? (latest.isBodyweight ? latest.unit : 'т') : 
                                latest.unit || 'раз'}
                             </span>
                           </div>
@@ -5522,7 +5525,7 @@ function ProgressPage({
                           <div className="text-[8px] text-muted uppercase font-bold mb-1">Рекорд</div>
                           <div className="text-xl font-display font-bold text-accent-2">
                             {chartMetric === 'weight' ? (latest.isBodyweight ? Math.max(...sorted.map(e => e.reps)) : best.weight) : 
-                             chartMetric === 'volume' ? (latest.isBodyweight ? Math.max(...sorted.map(e => e.reps)) : Math.max(...sorted.map(e => e.volume || (e.weight * e.reps)))) : 
+                             chartMetric === 'volume' ? (latest.isBodyweight ? Math.max(...sorted.map(e => e.reps)) : (Math.max(...sorted.map(e => e.volume || (e.weight * e.reps))) / 1000).toFixed(2)) : 
                              Math.max(...sorted.map(e => e.reps))}
                           </div>
                         </div>
@@ -5530,7 +5533,7 @@ function ProgressPage({
                           <div className="text-[8px] text-muted uppercase font-bold mb-1">Цель</div>
                           <div className="text-xl font-display font-bold text-done">
                             {chartMetric === 'weight' ? (latest.isBodyweight ? latest.reps + (latest.unit === 'сек' ? 5 : 2) : latest.weight + 1) : 
-                             chartMetric === 'volume' ? (latest.isBodyweight ? latest.reps + (latest.unit === 'сек' ? 10 : 5) : Math.round((latest.volume || (latest.weight * latest.reps)) * 1.05)) : 
+                             chartMetric === 'volume' ? (latest.isBodyweight ? latest.reps + (latest.unit === 'сек' ? 10 : 5) : ((Math.round((latest.volume || (latest.weight * latest.reps)) * 1.05)) / 1000).toFixed(2)) : 
                              latest.reps + (latest.unit === 'сек' ? 5 : 2)}
                           </div>
                         </div>
@@ -5541,7 +5544,7 @@ function ProgressPage({
                           <LineChart data={chartData.map(d => ({
                             ...d,
                             displayValue: chartMetric === 'weight' ? (latest.isBodyweight ? d.reps : d.weight) :
-                                         chartMetric === 'volume' ? (latest.isBodyweight ? d.reps : d.volume) :
+                                         chartMetric === 'volume' ? (latest.isBodyweight ? d.reps : (d.volume / 1000).toFixed(2)) :
                                          d.reps
                           }))}>
                             <XAxis dataKey="date" hide />
@@ -5549,7 +5552,7 @@ function ProgressPage({
                             <Tooltip 
                               contentStyle={{ backgroundColor: 'var(--color-surface)', borderRadius: '12px', border: '1px solid var(--color-border)', fontSize: '10px' }}
                               labelStyle={{ color: 'var(--color-accent)', fontWeight: 'bold' }}
-                              formatter={(value: any) => [`${value} ${latest.isBodyweight ? latest.unit : (chartMetric === 'reps' ? latest.unit : 'кг')}`, 'Результат']}
+                              formatter={(value: any) => [`${value} ${latest.isBodyweight ? latest.unit : (chartMetric === 'volume' ? 'т' : (chartMetric === 'reps' ? latest.unit : 'кг'))}`, 'Результат']}
                             />
                             {goalChangedAt && (
                               <ReferenceLine 
