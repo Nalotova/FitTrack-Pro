@@ -2234,7 +2234,7 @@ function ProgramEditor({ program, onSave, onClose }: { program: any; onSave: (da
       isCardio: isCardio
     };
     if (isCardio) {
-      newExercise.fields = ["мин", "км", "пульс"];
+      newExercise.fields = ["дистанция"];
     }
     setLocalProgram((prev: any) => ({
       ...prev,
@@ -2558,14 +2558,19 @@ function ProgramEditor({ program, onSave, onClose }: { program: any; onSave: (da
                     </div>
                     <div className="space-y-2">
                       <label className="text-[10px] text-muted uppercase font-bold tracking-widest ml-1">
-                        {ex.isCardio ? 'Поля (через запятую)' : 'Подсказка (необязательно)'}
+                        {ex.isCardio ? 'Доп. поля (мин и пульс — всегда)' : 'Подсказка (необязательно)'}
                       </label>
                       {ex.isCardio ? (
                         <input 
                           type="text" 
-                          value={ex.fields?.join(', ') || 'мин, км, пульс'}
-                          onChange={(e) => updateExercise(selectedDay, idx, 'fields', e.target.value.split(',').map(s => s.trim()).filter(s => s))}
-                          placeholder="мин, км, пульс"
+                          value={ex.fieldsRaw !== undefined ? ex.fieldsRaw : (ex.fields || []).filter((f: string) => f !== "мин" && f !== "пульс" && f !== "время" && f !== "средний пульс").join(', ')}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            updateExercise(selectedDay, idx, 'fieldsRaw', val);
+                            const fields = val.split(',').map(s => s.trim()).filter(s => s && s !== "мин" && s !== "пульс" && s !== "время" && s !== "средний пульс");
+                            updateExercise(selectedDay, idx, 'fields', fields);
+                          }}
+                          placeholder="дистанция, темп, калории (через запятую)"
                           className="w-full p-4 bg-surface-2/30 border-2 border-border rounded-2xl text-sm font-bold focus:border-accent outline-none transition-all"
                         />
                       ) : (
@@ -4475,7 +4480,8 @@ function TodayPage({
                   setCurrentSets((prev: any) => {
                     const updated = { ...prev };
                     const isCardio = ex.isCardio || program.isCardio;
-                    const fieldCount = isCardio ? (ex.fields?.length || 3) : 2;
+                    const cardioFields = ["мин", "пульс", ...(ex.fields || []).filter((f: string) => f !== "мин" && f !== "пульс" && f !== "время" && f !== "средний пульс")];
+                    const fieldCount = isCardio ? cardioFields.length : 2;
                     
                     if (!updated[idx]) {
                       updated[idx] = Array(ex.sets).fill(null).map(() => Array(fieldCount).fill(''));
@@ -4498,7 +4504,8 @@ function TodayPage({
                   setCurrentSets((prev: any) => {
                     const updated = { ...prev };
                     const isCardio = ex.isCardio || program.isCardio;
-                    const fieldCount = isCardio ? (ex.fields?.length || 3) : 2;
+                    const cardioFields = ["мин", "пульс", ...(ex.fields || []).filter((f: string) => f !== "мин" && f !== "пульс" && f !== "время" && f !== "средний пульс")];
+                    const fieldCount = isCardio ? cardioFields.length : 2;
                     
                     if (!updated[idx]) {
                       updated[idx] = Array(ex.sets).fill(null).map(() => Array(fieldCount).fill(''));
@@ -4574,7 +4581,7 @@ function ExerciseCard({ exercise, index, isCardioDay, isChecked, onCheck, sets, 
                     <>
                       <div className="text-[10px] text-muted font-bold w-8 flex-shrink-0">С{sIdx + 1}</div>
                       <div className="flex-1 flex gap-1.5">
-                        {(exercise.fields || ["мин", "км", "пульс"]).map((f: string, fi: number) => (
+                        {(["мин", "пульс", ...(exercise.fields || []).filter((f: string) => f !== "мин" && f !== "пульс" && f !== "время" && f !== "средний пульс")]).map((f: string, fi: number) => (
                           <div key={fi} className="flex-1 min-w-0">
                             <input 
                               type="number" 
