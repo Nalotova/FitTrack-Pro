@@ -998,7 +998,7 @@ update_tech_data — заполни технику
         </div>
       </div>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-4 pr-2 no-scrollbar mb-4">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-4 pr-2 no-scrollbar pb-[140px]">
         {!apiKey && (
           <div className="bg-red-50 border-2 border-red-100 rounded-2xl p-4 text-red-600 text-xs font-bold flex items-center gap-3">
             <AlertCircle size={20} />
@@ -1170,119 +1170,123 @@ update_tech_data — заполни технику
         )}
       </div>
 
-      <form 
-        onSubmit={(e) => {
-          e.preventDefault();
-          handleSend();
-        }}
-        className="bg-surface border-2 border-border rounded-3xl shadow-lg p-4 mx-0"
-      >
-        {attachedFiles.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto pb-3 no-scrollbar">
-            {attachedFiles.map((f, idx) => (
-              <div key={idx} className="relative flex-shrink-0">
-                {f.mimeType.startsWith('image/') ? (
-                  <img src={`data:${f.mimeType};base64,${f.data}`} alt="Preview" className="h-16 w-16 object-cover rounded-2xl border-2 border-accent shadow-sm" />
-                ) : (
-                  <div className="h-16 w-16 bg-surface border-2 border-accent rounded-2xl flex flex-col items-center justify-center p-2 shadow-sm">
-                    {f.mimeType.startsWith('video/') ? (
-                      <Video size={20} className="text-accent" />
-                    ) : f.mimeType.startsWith('audio/') ? (
-                      <FileAudio size={20} className="text-accent" />
-                    ) : f.mimeType.includes('pdf') || f.mimeType.startsWith('text/') ? (
-                      <FileText size={20} className="text-accent" />
+      <div className="fixed bottom-[calc(72px+env(safe-area-inset-bottom))] left-0 right-0 z-40 px-6 pb-4 bg-gradient-to-t from-bg via-bg to-transparent pt-4 pointer-events-none">
+        <div className="max-w-2xl mx-auto pointer-events-auto">
+          <form 
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSend();
+            }}
+            className="bg-surface border-2 border-border rounded-3xl shadow-lg p-4 mx-0"
+          >
+            {attachedFiles.length > 0 && (
+              <div className="flex gap-2 overflow-x-auto pb-3 no-scrollbar">
+                {attachedFiles.map((f, idx) => (
+                  <div key={idx} className="relative flex-shrink-0">
+                    {f.mimeType.startsWith('image/') ? (
+                      <img src={`data:${f.mimeType};base64,${f.data}`} alt="Preview" className="h-16 w-16 object-cover rounded-2xl border-2 border-accent shadow-sm" />
                     ) : (
-                      <File size={20} className="text-accent" />
+                      <div className="h-16 w-16 bg-surface border-2 border-accent rounded-2xl flex flex-col items-center justify-center p-2 shadow-sm">
+                        {f.mimeType.startsWith('video/') ? (
+                          <Video size={20} className="text-accent" />
+                        ) : f.mimeType.startsWith('audio/') ? (
+                          <FileAudio size={20} className="text-accent" />
+                        ) : f.mimeType.includes('pdf') || f.mimeType.startsWith('text/') ? (
+                          <FileText size={20} className="text-accent" />
+                        ) : (
+                          <File size={20} className="text-accent" />
+                        )}
+                        <span className="text-[8px] font-bold truncate w-full text-center mt-1">{f.name}</span>
+                      </div>
                     )}
-                    <span className="text-[8px] font-bold truncate w-full text-center mt-1">{f.name}</span>
+                    <button 
+                      type="button"
+                      onClick={() => setAttachedFiles(prev => prev.filter((_, i) => i !== idx))}
+                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md"
+                    >
+                      <X size={10} />
+                    </button>
                   </div>
-                )}
-                <button 
-                  type="button"
-                  onClick={() => setAttachedFiles(prev => prev.filter((_, i) => i !== idx))}
-                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md"
-                >
-                  <X size={10} />
-                </button>
+                ))}
               </div>
-            ))}
-          </div>
-        )}
-        
-        <div className="flex flex-col">
-          {isRecording ? (
-            <div className="w-full py-2 bg-red-50/50 rounded-xl flex items-center mb-2">
-              <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse mx-3"></div>
-              <span className="text-red-500 font-bold font-mono text-sm">
-                {Math.floor(recordingTime / 60).toString().padStart(2, '0')}:
-                {(recordingTime % 60).toString().padStart(2, '0')}
-              </span>
-              <span className="ml-2 text-red-400 text-[10px] uppercase tracking-widest font-bold">Запись...</span>
-            </div>
-          ) : (
-            <textarea 
-              value={input}
-              onChange={(e) => {
-                setInput(e.target.value);
-                e.target.style.height = 'auto';
-                e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
-              }}
-              placeholder="Спроси что-нибудь..."
-              className="w-full bg-transparent outline-none resize-none text-[15px] text-text leading-relaxed min-h-[24px]"
-              rows={1}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSend();
-                }
-              }}
-            />
-          )}
+            )}
+            
+            <div className="flex flex-col">
+              {isRecording ? (
+                <div className="w-full py-2 bg-red-50/50 rounded-xl flex items-center mb-2">
+                  <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse mx-3"></div>
+                  <span className="text-red-500 font-bold font-mono text-sm">
+                    {Math.floor(recordingTime / 60).toString().padStart(2, '0')}:
+                    {(recordingTime % 60).toString().padStart(2, '0')}
+                  </span>
+                  <span className="ml-2 text-red-400 text-[10px] uppercase tracking-widest font-bold">Запись...</span>
+                </div>
+              ) : (
+                <textarea 
+                  value={input}
+                  onChange={(e) => {
+                    setInput(e.target.value);
+                    e.target.style.height = 'auto';
+                    e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+                  }}
+                  placeholder="Спроси что-нибудь..."
+                  className="w-full bg-transparent outline-none resize-none text-[15px] text-text leading-relaxed min-h-[24px]"
+                  rows={1}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSend();
+                    }
+                  }}
+                />
+              )}
 
-          <div className="flex items-center justify-between mt-3">
-            <div className="flex items-center gap-4">
-              <Plus size={22} className="text-muted hover:text-accent transition-all cursor-pointer" onClick={() => fileInputRef.current?.click()} />
-              <Camera size={22} className="text-muted hover:text-accent transition-all cursor-pointer" onClick={() => {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = 'image/*';
-                input.onchange = (e) => handleFileUpload(e as any, true);
-                input.click();
-              }} />
-              <Mic 
-                size={22} 
-                className={`transition-all cursor-pointer ${isRecording ? 'text-red-500 animate-pulse' : 'text-muted hover:text-accent'}`} 
-                onClick={isRecording ? stopRecording : startRecording} 
+              <div className="flex items-center justify-between mt-3">
+                <div className="flex items-center gap-4">
+                  <Plus size={22} className="text-muted hover:text-accent transition-all cursor-pointer" onClick={() => fileInputRef.current?.click()} />
+                  <Camera size={22} className="text-muted hover:text-accent transition-all cursor-pointer" onClick={() => {
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = 'image/*';
+                    input.onchange = (e) => handleFileUpload(e as any, true);
+                    input.click();
+                  }} />
+                  <Mic 
+                    size={22} 
+                    className={`transition-all cursor-pointer ${isRecording ? 'text-red-500 animate-pulse' : 'text-muted hover:text-accent'}`} 
+                    onClick={isRecording ? stopRecording : startRecording} 
+                  />
+                </div>
+                <div className="flex items-center">
+                  <Trash2 
+                    size={20} 
+                    className="text-muted hover:text-red-400 transition-all cursor-pointer mr-2" 
+                    onClick={() => {
+                      setInput('');
+                      setAttachedFiles([]);
+                    }} 
+                  />
+                  <button 
+                    type="submit"
+                    disabled={isLoading || (!input.trim() && attachedFiles.length === 0 && !isRecording)}
+                    className="w-12 h-12 rounded-2xl bg-accent flex items-center justify-center shadow-md shadow-accent/30 active:scale-95 transition-all disabled:opacity-50"
+                  >
+                    {isRecording ? <Square size={20} className="text-white" fill="currentColor" onClick={(e) => { e.preventDefault(); stopRecording(); handleSend(); }} /> : <Send size={20} className="text-white" />}
+                  </button>
+                </div>
+              </div>
+              <input 
+                type="file" 
+                ref={fileInputRef}
+                onChange={handleFileUpload}
+                accept="image/*,audio/*,application/pdf,text/plain"
+                multiple
+                className="hidden"
               />
             </div>
-            <div className="flex items-center">
-              <Trash2 
-                size={20} 
-                className="text-muted hover:text-red-400 transition-all cursor-pointer mr-2" 
-                onClick={() => {
-                  setInput('');
-                  setAttachedFiles([]);
-                }} 
-              />
-              <button 
-                type="submit"
-                disabled={isLoading || (!input.trim() && attachedFiles.length === 0 && !isRecording)}
-                className="w-12 h-12 rounded-2xl bg-accent flex items-center justify-center shadow-md shadow-accent/30 active:scale-95 transition-all disabled:opacity-50"
-              >
-                {isRecording ? <Square size={20} className="text-white" fill="currentColor" onClick={(e) => { e.preventDefault(); stopRecording(); handleSend(); }} /> : <Send size={20} className="text-white" />}
-              </button>
-            </div>
-          </div>
-          <input 
-            type="file" 
-            ref={fileInputRef}
-            onChange={handleFileUpload}
-            accept="image/*,audio/*,application/pdf,text/plain"
-            multiple
-            className="hidden"
-          />
+          </form>
         </div>
-      </form>
+      </div>
     </motion.div>
   );
 }
