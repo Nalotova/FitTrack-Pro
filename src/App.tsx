@@ -1169,36 +1169,53 @@ function AppContent() {
   const handleFinishWorkout = async () => {
     if (!user || !programData || !programData[currentDay]) return;
     
+    setNotification({
+      show: true,
+      title: 'Сохранение...',
+      message: 'Пожалуйста, подождите, мы сохраняем ваши результаты. ⏳',
+      type: 'info'
+    });
+
     const workoutToSave: Workout = {
       userId: user.uid,
       date: new Date().toISOString(),
       day: currentDay,
       exercises: programData[currentDay].exercises.map((ex: any, i: number) => {
-        const isCardio = ex.isCardio || programData[currentDay].isCardio;
+        const isCardio = ex.isCardio || programData[currentDay].isCardio || false;
+        const exerciseSets = (currentSets[currentDay] || {})[i] || [];
         const cardioFields = isCardio ? ["мин", "пульс", "ккал", ...(ex.fields || []).filter((f: string) => f !== "мин" && f !== "пульс" && f !== "ккал" && f !== "время" && f !== "средний пульс")] : [];
         
-        const exerciseSets = (currentSets[currentDay] || {})[i] || [];
-        
-        return {
+        const sets = exerciseSets.map((s: any) => {
+          const row = Array.isArray(s) ? s : [];
+          const setObj: any = { 
+            weight: Number(row[0]) || 0, 
+            reps: Number(row[1]) || 0
+          };
+          if (isCardio) {
+            setObj.cardioValues = row.map((v: any) => Number(v) || 0);
+          }
+          return setObj;
+        });
+
+        const exObj: any = {
           name: ex.name,
           isCardio,
-          fields: isCardio ? cardioFields : undefined,
-          sets: exerciseSets.map((s: any) => {
-            const row = Array.isArray(s) ? s : [];
-            return { 
-              weight: Number(row[0]) || 0, 
-              reps: Number(row[1]) || 0,
-              cardioValues: isCardio ? row.map((v: any) => Number(v) || 0) : undefined
-            };
-          })
+          sets
         };
+        if (isCardio) {
+          exObj.fields = cardioFields;
+        }
+        return exObj;
       }),
-      notes: Object.values(currentNotes[currentDay] || {}).join('\n'),
+      notes: Object.values(currentNotes[currentDay] || {}).filter(Boolean).join('\n'),
       isCardio: programData[currentDay].isCardio || false
     };
 
     try {
-      await addDoc(collection(db, 'workouts'), workoutToSave);
+      // Clean workoutToSave of any undefined values just in case
+      const cleanWorkout = JSON.parse(JSON.stringify(workoutToSave));
+      
+      await addDoc(collection(db, 'workouts'), cleanWorkout);
       
       // Automatically save best sets to strength records
       const dayExercises = programData[currentDay].exercises;
@@ -1206,15 +1223,17 @@ function AppContent() {
         const ex = workoutToSave.exercises[i];
         const originalEx = dayExercises[i];
         
-        if (ex.sets.length > 0) {
+        if (ex.sets.length > 0 && originalEx) {
           // Find best set (highest weight, then highest reps)
+          const isBW = originalEx.bodyweight || originalEx.isCardio || false;
           const bestSet = ex.sets.reduce((prev, curr) => {
+            if (isBW) return curr.reps > prev.reps ? curr : prev;
             if (curr.weight > prev.weight) return curr;
             if (curr.weight === prev.weight && curr.reps > prev.reps) return curr;
             return prev;
           }, ex.sets[0]);
 
-          // Task 3: Calculate volume, avgWeight, setsCount, maxWeight, totalReps
+          // Calculate volume, avgWeight, setsCount, maxWeight, totalReps
           const volume = ex.sets.reduce((sum, s) => sum + (s.weight * s.reps), 0);
           const totalReps = ex.sets.reduce((sum, s) => sum + s.reps, 0);
           const avgWeight = totalReps > 0 ? volume / totalReps : 0;
@@ -1265,10 +1284,18 @@ function AppContent() {
       setNotification({
         show: true,
         title: 'Отличная работа!',
-        message: '🎉 Тренировка завершена!'
+        message: '🎉 Тренировка завершена! Твой прогресс сохранен.',
+        type: 'success'
       });
       setActiveTab('progress');
     } catch (error) {
+      console.error("Error finishing workout:", error);
+      setNotification({
+        show: true,
+        title: 'Ошибка',
+        message: 'Не удалось сохранить тренировку. Проверь интернет и попробуй снова. 🧘‍♀️',
+        type: 'error'
+      });
       handleFirestoreError(error, OperationType.CREATE, 'workouts');
     }
   };
@@ -1413,7 +1440,7 @@ function AppContent() {
     if (!user) return;
     try {
       const cleanData = Object.fromEntries(
-        Object.entries(data).filter(([_, v]) => v !== undefined)
+        Object.entries(data).filter(([_, v]) => v !== undefined && v !== null)
       );
       
       if ('weight' in cleanData) {
@@ -1427,6 +1454,12 @@ function AppContent() {
       }
       if ('avgWeight' in cleanData) {
         cleanData.avgWeight = isNaN(Number(cleanData.avgWeight)) || !isFinite(Number(cleanData.avgWeight)) ? 0 : Number(cleanData.avgWeight);
+      }
+      if ('maxWeight' in cleanData) {
+        cleanData.maxWeight = isNaN(Number(cleanData.maxWeight)) || !isFinite(Number(cleanData.maxWeight)) ? 0 : Number(cleanData.maxWeight);
+      }
+      if ('totalReps' in cleanData) {
+        cleanData.totalReps = isNaN(Number(cleanData.totalReps)) || !isFinite(Number(cleanData.totalReps)) ? 0 : Number(cleanData.totalReps);
       }
       if ('setsCount' in cleanData) {
         cleanData.setsCount = isNaN(Number(cleanData.setsCount)) || !isFinite(Number(cleanData.setsCount)) ? 0 : Number(cleanData.setsCount);
@@ -1443,6 +1476,7 @@ function AppContent() {
         await updateProgramTipWithWeight(data.exercise, cleanData);
       }
     } catch (error) {
+      console.error("Error saving strength record:", error);
       handleFirestoreError(error, OperationType.CREATE, 'strength');
     }
   };
