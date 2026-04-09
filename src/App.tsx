@@ -1254,7 +1254,7 @@ function AppContent() {
               maxWeight,
               totalReps,
               setsCount,
-              unit: originalEx.unit || 'кг',
+              unit: originalEx.unit || 'раз',
               isBodyweight: originalEx.bodyweight || false,
               isCardio: false
             });
@@ -5508,33 +5508,52 @@ function ProgressPage({
                       </div>
                       
                       <div className="grid grid-cols-3 gap-2">
-                        <div className="bg-surface-2/50 p-3 rounded-2xl text-center">
-                          <div className="text-[8px] text-muted uppercase font-bold mb-1">Сейчас</div>
+                        <div className="bg-surface-2/50 p-3 rounded-2xl text-center flex flex-col justify-between">
+                          <div>
+                            <div className="text-[8px] text-muted uppercase font-bold">Сейчас</div>
+                            <div className="text-[6px] text-muted/60 mb-1 leading-none">Прошлая тренировка</div>
+                          </div>
                           <div className="text-xl font-display font-bold text-accent">
                             {chartMetric === 'weight' ? (latest.isBodyweight ? latest.reps : latest.weight) : 
                              chartMetric === 'volume' ? (latest.isBodyweight ? latest.reps : ((latest.volume || (latest.weight * latest.reps)) / 1000).toFixed(2)) : 
                              latest.reps}
                             <span className="text-[10px] ml-0.5 opacity-70">
-                              {chartMetric === 'weight' ? (latest.isBodyweight ? latest.unit : 'кг') : 
-                               chartMetric === 'volume' ? (latest.isBodyweight ? latest.unit : 'т') : 
-                               latest.unit || 'раз'}
+                              {chartMetric === 'weight' ? (latest.isBodyweight ? (latest.unit && latest.unit !== 'кг' ? latest.unit : 'раз') : 'кг') : 
+                               chartMetric === 'volume' ? (latest.isBodyweight ? (latest.unit && latest.unit !== 'кг' ? latest.unit : 'раз') : 'т') : 
+                               (latest.unit && latest.unit !== 'кг' ? latest.unit : 'раз')}
                             </span>
                           </div>
                         </div>
-                        <div className="bg-accent-2/10 p-3 rounded-2xl text-center">
-                          <div className="text-[8px] text-muted uppercase font-bold mb-1">Рекорд</div>
+                        <div className="bg-accent-2/10 p-3 rounded-2xl text-center flex flex-col justify-between">
+                          <div>
+                            <div className="text-[8px] text-muted uppercase font-bold">Рекорд</div>
+                            <div className="text-[6px] text-muted/60 mb-1 leading-none">Лучший результат</div>
+                          </div>
                           <div className="text-xl font-display font-bold text-accent-2">
                             {chartMetric === 'weight' ? (latest.isBodyweight ? Math.max(...sorted.map(e => e.reps)) : best.weight) : 
                              chartMetric === 'volume' ? (latest.isBodyweight ? Math.max(...sorted.map(e => e.reps)) : (Math.max(...sorted.map(e => e.volume || (e.weight * e.reps))) / 1000).toFixed(2)) : 
                              Math.max(...sorted.map(e => e.reps))}
+                            <span className="text-[10px] ml-0.5 opacity-70">
+                              {chartMetric === 'weight' ? (latest.isBodyweight ? (latest.unit && latest.unit !== 'кг' ? latest.unit : 'раз') : 'кг') : 
+                               chartMetric === 'volume' ? (latest.isBodyweight ? (latest.unit && latest.unit !== 'кг' ? latest.unit : 'раз') : 'т') : 
+                               (latest.unit && latest.unit !== 'кг' ? latest.unit : 'раз')}
+                            </span>
                           </div>
                         </div>
-                        <div className="bg-done/10 p-3 rounded-2xl text-center">
-                          <div className="text-[8px] text-muted uppercase font-bold mb-1">Цель</div>
+                        <div className="bg-done/10 p-3 rounded-2xl text-center flex flex-col justify-between">
+                          <div>
+                            <div className="text-[8px] text-muted uppercase font-bold">Цель</div>
+                            <div className="text-[6px] text-muted/60 mb-1 leading-none">План на сегодня</div>
+                          </div>
                           <div className="text-xl font-display font-bold text-done">
                             {chartMetric === 'weight' ? (latest.isBodyweight ? latest.reps + (latest.unit === 'сек' ? 5 : 2) : latest.weight + 1) : 
                              chartMetric === 'volume' ? (latest.isBodyweight ? latest.reps + (latest.unit === 'сек' ? 10 : 5) : ((Math.round((latest.volume || (latest.weight * latest.reps)) * 1.05)) / 1000).toFixed(2)) : 
                              latest.reps + (latest.unit === 'сек' ? 5 : 2)}
+                            <span className="text-[10px] ml-0.5 opacity-70">
+                              {chartMetric === 'weight' ? (latest.isBodyweight ? (latest.unit && latest.unit !== 'кг' ? latest.unit : 'раз') : 'кг') : 
+                               chartMetric === 'volume' ? (latest.isBodyweight ? (latest.unit && latest.unit !== 'кг' ? latest.unit : 'раз') : 'т') : 
+                               (latest.unit && latest.unit !== 'кг' ? latest.unit : 'раз')}
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -5552,7 +5571,14 @@ function ProgressPage({
                             <Tooltip 
                               contentStyle={{ backgroundColor: 'var(--color-surface)', borderRadius: '12px', border: '1px solid var(--color-border)', fontSize: '10px' }}
                               labelStyle={{ color: 'var(--color-accent)', fontWeight: 'bold' }}
-                              formatter={(value: any) => [`${value} ${latest.isBodyweight ? latest.unit : (chartMetric === 'volume' ? 'т' : (chartMetric === 'reps' ? latest.unit : 'кг'))}`, 'Результат']}
+                              formatter={(value: any) => {
+                                const unit = chartMetric === 'weight' 
+                                  ? (latest.isBodyweight ? (latest.unit && latest.unit !== 'кг' ? latest.unit : 'раз') : 'кг')
+                                  : chartMetric === 'volume' 
+                                    ? (latest.isBodyweight ? (latest.unit && latest.unit !== 'кг' ? latest.unit : 'раз') : 'т')
+                                    : (latest.unit && latest.unit !== 'кг' ? latest.unit : 'раз');
+                                return [`${value} ${unit}`, 'Результат'];
+                              }}
                             />
                             {goalChangedAt && (
                               <ReferenceLine 
