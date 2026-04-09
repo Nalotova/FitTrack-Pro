@@ -110,11 +110,14 @@ import {
 interface Set {
   reps: number;
   weight: number;
+  cardioValues?: number[];
 }
 
 interface Exercise {
   name: string;
   sets: Set[];
+  isCardio?: boolean;
+  fields?: string[];
 }
 
 interface TechItem {
@@ -1170,10 +1173,21 @@ function AppContent() {
       userId: user.uid,
       date: new Date().toISOString(),
       day: currentDay,
-      exercises: programData[currentDay].exercises.map((ex: any, i: number) => ({
-        name: ex.name,
-        sets: (currentSets[currentDay] || {})[i]?.map((s: any) => ({ weight: Number(s[0]) || 0, reps: Number(s[1]) || 0 })) || []
-      })),
+      exercises: programData[currentDay].exercises.map((ex: any, i: number) => {
+        const isCardio = ex.isCardio || programData[currentDay].isCardio;
+        const cardioFields = isCardio ? ["мин", "пульс", "ккал", ...(ex.fields || []).filter((f: string) => f !== "мин" && f !== "пульс" && f !== "ккал" && f !== "время" && f !== "средний пульс")] : [];
+        
+        return {
+          name: ex.name,
+          isCardio,
+          fields: isCardio ? cardioFields : undefined,
+          sets: (currentSets[currentDay] || {})[i]?.map((s: any) => ({ 
+            weight: Number(s[0]) || 0, 
+            reps: Number(s[1]) || 0,
+            cardioValues: isCardio ? s.map((v: any) => Number(v) || 0) : undefined
+          })) || []
+        };
+      }),
       notes: Object.values(currentNotes[currentDay] || {}).join('\n'),
       isCardio: programData[currentDay].isCardio || false
     };
@@ -2558,16 +2572,16 @@ function ProgramEditor({ program, onSave, onClose }: { program: any; onSave: (da
                     </div>
                     <div className="space-y-2">
                       <label className="text-[10px] text-muted uppercase font-bold tracking-widest ml-1">
-                        {ex.isCardio ? 'Доп. поля (мин и пульс — всегда)' : 'Подсказка (необязательно)'}
+                        {ex.isCardio ? 'Доп. поля (мин, пульс, ккал — всегда)' : 'Подсказка (необязательно)'}
                       </label>
                       {ex.isCardio ? (
                         <input 
                           type="text" 
-                          value={ex.fieldsRaw !== undefined ? ex.fieldsRaw : (ex.fields || []).filter((f: string) => f !== "мин" && f !== "пульс" && f !== "время" && f !== "средний пульс").join(', ')}
+                          value={ex.fieldsRaw !== undefined ? ex.fieldsRaw : (ex.fields || []).filter((f: string) => f !== "мин" && f !== "пульс" && f !== "ккал" && f !== "время" && f !== "средний пульс").join(', ')}
                           onChange={(e) => {
                             const val = e.target.value;
                             updateExercise(selectedDay, idx, 'fieldsRaw', val);
-                            const fields = val.split(',').map(s => s.trim()).filter(s => s && s !== "мин" && s !== "пульс" && s !== "время" && s !== "средний пульс");
+                            const fields = val.split(',').map(s => s.trim()).filter(s => s && s !== "мин" && s !== "пульс" && s !== "ккал" && s !== "время" && s !== "средний пульс");
                             updateExercise(selectedDay, idx, 'fields', fields);
                           }}
                           placeholder="дистанция, темп, калории (через запятую)"
@@ -4480,7 +4494,7 @@ function TodayPage({
                   setCurrentSets((prev: any) => {
                     const updated = { ...prev };
                     const isCardio = ex.isCardio || program.isCardio;
-                    const cardioFields = ["мин", "пульс", ...(ex.fields || []).filter((f: string) => f !== "мин" && f !== "пульс" && f !== "время" && f !== "средний пульс")];
+                    const cardioFields = ["мин", "пульс", "ккал", ...(ex.fields || []).filter((f: string) => f !== "мин" && f !== "пульс" && f !== "ккал" && f !== "время" && f !== "средний пульс")];
                     const fieldCount = isCardio ? cardioFields.length : 2;
                     
                     if (!updated[idx]) {
@@ -4504,7 +4518,7 @@ function TodayPage({
                   setCurrentSets((prev: any) => {
                     const updated = { ...prev };
                     const isCardio = ex.isCardio || program.isCardio;
-                    const cardioFields = ["мин", "пульс", ...(ex.fields || []).filter((f: string) => f !== "мин" && f !== "пульс" && f !== "время" && f !== "средний пульс")];
+                    const cardioFields = ["мин", "пульс", "ккал", ...(ex.fields || []).filter((f: string) => f !== "мин" && f !== "пульс" && f !== "ккал" && f !== "время" && f !== "средний пульс")];
                     const fieldCount = isCardio ? cardioFields.length : 2;
                     
                     if (!updated[idx]) {
@@ -4581,7 +4595,7 @@ function ExerciseCard({ exercise, index, isCardioDay, isChecked, onCheck, sets, 
                     <>
                       <div className="text-[10px] text-muted font-bold w-8 flex-shrink-0">С{sIdx + 1}</div>
                       <div className="flex-1 flex gap-1.5">
-                        {(["мин", "пульс", ...(exercise.fields || []).filter((f: string) => f !== "мин" && f !== "пульс" && f !== "время" && f !== "средний пульс")]).map((f: string, fi: number) => (
+                        {(["мин", "пульс", "ккал", ...(exercise.fields || []).filter((f: string) => f !== "мин" && f !== "пульс" && f !== "ккал" && f !== "время" && f !== "средний пульс")]).map((f: string, fi: number) => (
                           <div key={fi} className="flex-1 min-w-0">
                             <input 
                               type="number" 
@@ -4657,6 +4671,11 @@ function ExerciseCard({ exercise, index, isCardioDay, isChecked, onCheck, sets, 
                 </div>
               ))}
             </div>
+            {isCardio && (
+              <div className="text-[9px] text-muted/70 italic px-1">
+                💡 Если тренажер показывает ккал — впиши их, иначе оставь поле пустым для авторасчета.
+              </div>
+            )}
             <div className="relative">
               <textarea 
                 className="w-full bg-surface-2/50 border-2 border-border rounded-2xl p-3 text-[12px] text-text focus:border-accent outline-none h-16 resize-none transition-all"
@@ -4897,6 +4916,67 @@ function ProgressPage({
     return data;
   }, [workouts, activityPeriod]);
 
+  const cardioStats = useMemo(() => {
+    let totalMinutes = 0;
+    let totalCalories = 0;
+    
+    // Get latest weight from measurements
+    const latestWeight = measurements && measurements.length > 0 
+      ? [...measurements].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].weight || 70
+      : 70;
+    
+    const age = Number(userProfile?.age) || 30;
+    const gender = userProfile?.gender || 'male';
+
+    workouts.forEach(w => {
+      w.exercises.forEach(ex => {
+        if (ex.isCardio) {
+          ex.sets.forEach(set => {
+            const values = set.cardioValues || [set.weight, set.reps];
+            const fields = ex.fields || ["мин", "пульс"];
+            
+            const minIdx = fields.indexOf("мин");
+            const pulseIdx = fields.indexOf("пульс");
+            const kcalIdx = fields.indexOf("ккал");
+            
+            const mins = minIdx !== -1 ? (values[minIdx] || 0) : 0;
+            const pulse = pulseIdx !== -1 ? (values[pulseIdx] || 0) : 0;
+            const manualKcal = kcalIdx !== -1 ? (values[kcalIdx] || 0) : 0;
+            
+            totalMinutes += mins;
+            
+            let setKcal = 0;
+            if (manualKcal > 0) {
+              setKcal = manualKcal;
+            } else if (mins > 0 && pulse > 0) {
+              // Formula based on heart rate (Keytel et al. 2005)
+              if (gender === 'male') {
+                setKcal = ((-55.0969 + (0.6309 * pulse) + (0.1988 * latestWeight) + (0.2017 * age)) / 4.184) * mins;
+              } else {
+                setKcal = ((-20.4022 + (0.4472 * pulse) - (0.1263 * latestWeight) + (0.074 * age)) / 4.184) * mins;
+              }
+            } else if (mins > 0) {
+              // Formula based on MET (average 7.5 for general cardio)
+              setKcal = 0.0175 * 7.5 * latestWeight * mins;
+            }
+            
+            totalCalories += Math.max(0, setKcal);
+          });
+        }
+      });
+    });
+    
+    const fatBurned = totalCalories / 7700;
+    const progressPct = (totalCalories % 7700) / 7700 * 100;
+    
+    return {
+      totalMinutes,
+      totalCalories: Math.round(totalCalories),
+      fatBurned: fatBurned.toFixed(2),
+      progressPct
+    };
+  }, [workouts, measurements, userProfile]);
+
   const strengthByExercise = useMemo(() => {
     const groups: Record<string, StrengthRecord[]> = {};
     strengthRecords.forEach(r => {
@@ -5131,8 +5211,58 @@ function ProgressPage({
               </div>
             )}
 
+            {/* Cardio Progress Card */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 px-1">
+                <div className="w-1 h-4 bg-accent rounded-full" />
+                <h4 className="text-[11px] text-muted uppercase font-bold tracking-[0.2em]">Кардио прогресс</h4>
+              </div>
+              <div className="bg-surface border-2 border-border rounded-[32px] p-6 shadow-sm overflow-hidden relative">
+                <div className="grid grid-cols-3 gap-4 mb-6 relative z-10">
+                  <div className="text-center">
+                    <div className="text-[10px] text-muted uppercase font-bold tracking-wider mb-1">Время</div>
+                    <div className="text-xl font-display font-bold text-text">
+                      {(cardioStats.totalMinutes / 60).toFixed(1)} <span className="text-[10px]">ч</span>
+                    </div>
+                  </div>
+                  <div className="text-center border-x border-border/50">
+                    <div className="text-[10px] text-muted uppercase font-bold tracking-wider mb-1">Энергия</div>
+                    <div className="text-xl font-display font-bold text-accent">{cardioStats.totalCalories} <span className="text-[10px]">ккал</span></div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-[10px] text-muted uppercase font-bold tracking-wider mb-1">Жиросжигание</div>
+                    <div className="text-xl font-display font-bold text-done">{cardioStats.fatBurned} <span className="text-[10px]">кг</span></div>
+                  </div>
+                </div>
+                
+                <div className="space-y-2 relative z-10">
+                  <div className="flex justify-between items-end">
+                    <div className="text-[9px] text-muted font-bold uppercase tracking-widest">Прогресс до -1 кг жира</div>
+                    <div className="text-[11px] font-mono font-bold text-accent">{Math.round(cardioStats.progressPct)}%</div>
+                  </div>
+                  <div className="h-3 bg-surface-2 rounded-full overflow-hidden p-[2px] border border-border/50">
+                    <motion.div 
+                      initial={{ width: 0 }}
+                      animate={{ width: `${cardioStats.progressPct}%` }}
+                      className="h-full bg-gradient-to-r from-accent to-accent-2 rounded-full shadow-[0_0_10px_rgba(244,114,182,0.3)]"
+                    />
+                  </div>
+                </div>
+                
+                {/* Decorative background element */}
+                <div className="absolute -right-4 -bottom-4 opacity-[0.03] pointer-events-none">
+                  <Activity size={120} />
+                </div>
+              </div>
+            </div>
+
             {/* Strength Cards */}
-            <div className="space-y-4">
+            <div className="space-y-6">
+              <div className="flex items-center gap-2 px-1">
+                <div className="w-1 h-4 bg-accent-2 rounded-full" />
+                <h4 className="text-[11px] text-muted uppercase font-bold tracking-[0.2em]">Силовой прогресс</h4>
+              </div>
+              <div className="space-y-4">
               <div className="flex gap-2 mb-2 px-2 overflow-x-auto no-scrollbar">
                 {[
                   { id: 'weight', label: 'Вес' },
@@ -5300,6 +5430,7 @@ function ProgressPage({
                 })
               )}
             </div>
+          </div>
 
             {/* History */}
             <div className="space-y-6">
