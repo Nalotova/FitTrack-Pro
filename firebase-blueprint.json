@@ -8,19 +8,25 @@
         "userId": { "type": "string", "description": "The UID of the user who performed the workout." },
         "date": { "type": "string", "format": "date-time", "description": "The date and time of the workout." },
         "name": { "type": "string", "description": "The name of the workout (e.g., 'Leg Day')." },
+        "day": { "type": "string", "description": "The day of the program." },
+        "isCardio": { "type": "boolean", "description": "Whether the entire workout is cardio-focused." },
+        "notes": { "type": "string", "description": "Optional notes for the workout." },
         "exercises": {
           "type": "array",
           "items": {
             "type": "object",
             "properties": {
               "name": { "type": "string", "description": "The name of the exercise." },
+              "isCardio": { "type": "boolean", "description": "Whether this specific exercise is cardio." },
+              "fields": { "type": "array", "items": { "type": "string" }, "description": "Custom field names for cardio (e.g., ['мин', 'пульс'])." },
               "sets": {
                 "type": "array",
                 "items": {
                   "type": "object",
                   "properties": {
                     "reps": { "type": "number", "description": "Number of repetitions." },
-                    "weight": { "type": "number", "description": "Weight used in kg/lbs." }
+                    "weight": { "type": "number", "description": "Weight used in kg/lbs." },
+                    "cardioValues": { "type": "array", "items": { "type": "number" }, "description": "Values for cardio fields." }
                   },
                   "required": ["reps", "weight"]
                 }
@@ -30,7 +36,7 @@
           }
         }
       },
-      "required": ["userId", "date", "name", "exercises"]
+      "required": ["userId", "date", "exercises"]
     },
     "UserProfile": {
       "title": "User Profile",
@@ -41,7 +47,7 @@
         "email": { "type": "string", "format": "email", "description": "The user's email address." },
         "photoURL": { "type": "string", "description": "The user's profile picture URL." },
         "role": { "type": "string", "enum": ["admin", "user"], "description": "The user's role." },
-        "gender": { "type": "string", "enum": ["male", "female", "other"], "description": "The user's gender." },
+        "gender": { "type": "string", "enum": ["male", "female"], "description": "The user's gender." },
         "createdAt": { "type": "string", "format": "date-time", "description": "When the profile was created." },
         "reminders": {
           "type": "array",

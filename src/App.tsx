@@ -193,7 +193,7 @@ interface UserProfile {
   photoURL?: string;
   role: 'user' | 'admin';
   age?: string | number;
-  gender?: 'male' | 'female' | 'other';
+  gender?: 'male' | 'female';
   goal?: string;
   goalType?: 'hypertrophy' | 'strength' | 'fat_loss' | 'recomposition' | 'endurance' | 'tone';
   goalChangedAt?: string;
@@ -1167,7 +1167,7 @@ function AppContent() {
 
   // Workout Logic
   const handleFinishWorkout = async () => {
-    if (!user) return;
+    if (!user || !programData || !programData[currentDay]) return;
     
     const workoutToSave: Workout = {
       userId: user.uid,
@@ -1177,15 +1177,20 @@ function AppContent() {
         const isCardio = ex.isCardio || programData[currentDay].isCardio;
         const cardioFields = isCardio ? ["мин", "пульс", "ккал", ...(ex.fields || []).filter((f: string) => f !== "мин" && f !== "пульс" && f !== "ккал" && f !== "время" && f !== "средний пульс")] : [];
         
+        const exerciseSets = (currentSets[currentDay] || {})[i] || [];
+        
         return {
           name: ex.name,
           isCardio,
           fields: isCardio ? cardioFields : undefined,
-          sets: (currentSets[currentDay] || {})[i]?.map((s: any) => ({ 
-            weight: Number(s[0]) || 0, 
-            reps: Number(s[1]) || 0,
-            cardioValues: isCardio ? s.map((v: any) => Number(v) || 0) : undefined
-          })) || []
+          sets: exerciseSets.map((s: any) => {
+            const row = Array.isArray(s) ? s : [];
+            return { 
+              weight: Number(row[0]) || 0, 
+              reps: Number(row[1]) || 0,
+              cardioValues: isCardio ? row.map((v: any) => Number(v) || 0) : undefined
+            };
+          })
         };
       }),
       notes: Object.values(currentNotes[currentDay] || {}).join('\n'),
@@ -3922,7 +3927,7 @@ function ProfilePage({
 }) {
   const [name, setName] = useState(profile?.displayName || '');
   const [age, setAge] = useState(profile?.age?.toString() || '');
-  const [gender, setGender] = useState<'male' | 'female' | 'other'>(profile?.gender || 'male');
+  const [gender, setGender] = useState<'male' | 'female'>(profile?.gender === 'female' ? 'female' : 'male');
   const [goal, setGoal] = useState(profile?.goal || '');
   const [isEditing, setIsEditing] = useState(isInitialEditing);
   const [isSaving, setIsSaving] = useState(false);
@@ -4032,7 +4037,7 @@ function ProfilePage({
   const handleCancel = () => {
     setName(profile?.displayName || '');
     setAge(profile?.age?.toString() || '');
-    setGender(profile?.gender || 'male');
+    setGender(profile?.gender === 'female' ? 'female' : 'male');
     setGoal(profile?.goal || '');
     handleToggleEdit(false);
   };
@@ -4138,8 +4143,7 @@ function ProfilePage({
                 <div className="flex gap-2">
                   {[
                     { id: 'female', label: 'Ж' },
-                    { id: 'male', label: 'М' },
-                    { id: 'other', label: '?' }
+                    { id: 'male', label: 'М' }
                   ].map((g) => (
                     <button
                       key={g.id}
@@ -4179,7 +4183,7 @@ function ProfilePage({
               <div>
                 <div className="text-[9px] text-muted uppercase font-bold tracking-widest mb-0.5">Пол</div>
                 <div className="text-[15px] font-bold text-text">
-                  {gender === 'male' ? 'Мужской' : gender === 'female' ? 'Женский' : 'Другой'}
+                  {gender === 'male' ? 'Мужской' : 'Женский'}
                 </div>
               </div>
             </div>
@@ -4929,9 +4933,15 @@ function ProgressPage({
     const gender = userProfile?.gender || 'male';
 
     workouts.forEach(w => {
+      if (!w.exercises) return;
       w.exercises.forEach(ex => {
-        if (ex.isCardio) {
-          ex.sets.forEach(set => {
+        // Check if it's cardio (either by flag or by checking program data for old records)
+        const isCardio = ex.isCardio || Object.values(programData || {}).some((day: any) => 
+          day.exercises?.some((pEx: any) => pEx.name === ex.name && (pEx.isCardio || day.isCardio))
+        );
+
+        if (isCardio) {
+          ex.sets?.forEach(set => {
             const values = set.cardioValues || [set.weight, set.reps];
             const fields = ex.fields || ["мин", "пульс"];
             
@@ -4939,9 +4949,9 @@ function ProgressPage({
             const pulseIdx = fields.indexOf("пульс");
             const kcalIdx = fields.indexOf("ккал");
             
-            const mins = minIdx !== -1 ? (values[minIdx] || 0) : 0;
-            const pulse = pulseIdx !== -1 ? (values[pulseIdx] || 0) : 0;
-            const manualKcal = kcalIdx !== -1 ? (values[kcalIdx] || 0) : 0;
+            const mins = minIdx !== -1 ? (Number(values[minIdx]) || 0) : 0;
+            const pulse = pulseIdx !== -1 ? (Number(values[pulseIdx]) || 0) : 0;
+            const manualKcal = kcalIdx !== -1 ? (Number(values[kcalIdx]) || 0) : 0;
             
             totalMinutes += mins;
             
@@ -4950,10 +4960,10 @@ function ProgressPage({
               setKcal = manualKcal;
             } else if (mins > 0 && pulse > 0) {
               // Formula based on heart rate (Keytel et al. 2005)
-              if (gender === 'male') {
-                setKcal = ((-55.0969 + (0.6309 * pulse) + (0.1988 * latestWeight) + (0.2017 * age)) / 4.184) * mins;
-              } else {
+              if (gender === 'female') {
                 setKcal = ((-20.4022 + (0.4472 * pulse) - (0.1263 * latestWeight) + (0.074 * age)) / 4.184) * mins;
+              } else {
+                setKcal = ((-55.0969 + (0.6309 * pulse) + (0.1988 * latestWeight) + (0.2017 * age)) / 4.184) * mins;
               }
             } else if (mins > 0) {
               // Formula based on MET (average 7.5 for general cardio)

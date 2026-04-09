@@ -22,12 +22,18 @@ service cloud.firestore {
     // Fields:
     //   - userId: string (required, matches owner)
     //   - date: string (required, ISO 8601 format)
-    //   - name: string (required, 1-100 chars)
+    //   - day: string (required)
+    //   - name: string (optional, 1-100 chars)
+    //   - isCardio: bool (optional)
+    //   - notes: string (optional)
     //   - exercises: list (required, max 50 items)
     //     - name: string (required)
+    //     - isCardio: bool (optional)
+    //     - fields: list (optional)
     //     - sets: list (required)
     //       - reps: number (required, positive)
     //       - weight: number (required, non-negative)
+    //       - cardioValues: list (optional)
     //
     // ===============================================================
 
@@ -86,7 +92,7 @@ service cloud.firestore {
              (!('goal' in data) || data.goal is string || data.goal == null) &&
              (!('goalType' in data) || (data.goalType is string && data.goalType in ['hypertrophy', 'strength', 'fat_loss', 'recomposition', 'endurance', 'tone'])) &&
              (!('goalChangedAt' in data) || data.goalChangedAt is string) &&
-             (!('gender' in data) || (data.gender is string && data.gender in ['male', 'female', 'other'])) &&
+             (!('gender' in data) || (data.gender is string && data.gender in ['male', 'female'])) &&
              (!('reminders' in data) || (data.reminders is list && data.reminders.size() <= 20));
     }
 
@@ -105,18 +111,19 @@ service cloud.firestore {
              (!('goal' in data) || data.goal is string || data.goal == null) &&
              (!('goalType' in data) || (data.goalType is string && data.goalType in ['hypertrophy', 'strength', 'fat_loss', 'recomposition', 'endurance', 'tone'])) &&
              (!('goalChangedAt' in data) || data.goalChangedAt is string) &&
-             (!('gender' in data) || (data.gender is string && data.gender in ['male', 'female', 'other'])) &&
+             (!('gender' in data) || (data.gender is string && data.gender in ['male', 'female'])) &&
              (!('reminders' in data) || (data.reminders is list && data.reminders.size() <= 20));
     }
 
     function isValidWorkout(data) {
       return data.keys().hasAll(['userId', 'date', 'day', 'exercises']) &&
-             data.keys().hasOnly(['userId', 'date', 'day', 'exercises', 'notes', 'name']) &&
+             data.keys().hasOnly(['userId', 'date', 'day', 'exercises', 'notes', 'name', 'isCardio']) &&
              data.userId == request.auth.uid &&
              isValidDateString(data.date) &&
              data.day is string && data.day.size() > 0 && data.day.size() < 100 &&
              (!('name' in data) || (data.name is string && data.name.size() > 0 && data.name.size() <= 100)) &&
              (!('notes' in data) || (data.notes is string && data.notes.size() < 10000)) &&
+             (!('isCardio' in data) || data.isCardio is bool) &&
              data.exercises is list && data.exercises.size() <= 50;
     }
 
