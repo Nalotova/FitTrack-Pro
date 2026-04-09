@@ -118,6 +118,7 @@ interface Exercise {
   sets: Set[];
   isCardio?: boolean;
   fields?: string[];
+  rpe?: number;
 }
 
 interface TechItem {
@@ -185,6 +186,7 @@ interface StrengthRecord {
   unit?: string;
   isBodyweight?: boolean;
   isCardio?: boolean;
+  rpe?: number;
 }
 
 interface UserProfile {
@@ -420,6 +422,84 @@ function GuideModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void 
   );
 }
 
+const calculateExerciseGoal = (
+  exDef: any,
+  history: StrengthRecord[],
+  goalType: string
+) => {
+  if (history.length === 0) return null;
+  
+  const last = history[0];
+  const prev = history[1];
+  const prev2 = history[2];
+  
+  // Extract reps range from scheme (e.g., "3 × 15-20" or "3 × 15")
+  const schemeMatch = exDef?.scheme?.match(/(\d+)\s*-\s*(\d+)/);
+  const singleMatch = exDef?.scheme?.match(/×\s*(\d+)/);
+  const minReps = schemeMatch ? parseInt(schemeMatch[1]) : (singleMatch ? parseInt(singleMatch[1]) : (last.reps || 12));
+  const maxReps = schemeMatch ? parseInt(schemeMatch[2]) : (singleMatch ? parseInt(singleMatch[1]) : (last.reps || 15));
+  
+  // RPE Adjustment (Rate of Perceived Exertion)
+  const rpe = last.rpe || 8;
+  
+  // Determine if it's an isolation exercise
+  const isIsolation = /махи|разведения|бицепс|трицепс|разгибания|сгибания|икры|пресс|скручивания/i.test(exDef?.name || '');
+  
+  // Plateau detection (3 sessions without progress)
+  const isPlateau = prev && prev2 && 
+    (last.volume || 0) <= (prev.volume || 0) && 
+    (prev.volume || 0) <= (prev2.volume || 0);
+
+  if (isPlateau) {
+    return {
+      type: 'deload',
+      label: 'Разгрузка',
+      message: 'Плато! Снизь вес на 20% для восстановления',
+      weight: Math.round(last.weight * 0.8 * 2) / 2,
+      reps: maxReps,
+      volume: last.volume ? last.volume * 0.7 : 0
+    };
+  }
+
+  // If RPE is very high (9-10), don't increase, just stabilize
+  if (rpe >= 9) {
+    return {
+      type: 'stabilize',
+      label: 'Закрепление',
+      message: 'Тяжело! Закрепи результат с тем же весом',
+      weight: last.weight,
+      reps: last.reps,
+      volume: last.volume || 0
+    };
+  }
+
+  // Double Progression Logic
+  if (last.reps < maxReps) {
+    // Add reps first
+    const step = rpe <= 6 ? 2 : 1;
+    const newReps = Math.min(last.reps + step, maxReps);
+    return {
+      type: 'reps',
+      label: 'Прогресс',
+      message: `Цель: +${newReps - last.reps} повтор (${newReps})`,
+      weight: last.weight,
+      reps: newReps,
+      volume: (last.volume || 0) * (newReps / (last.reps || 1))
+    };
+  } else {
+    // Increase weight
+    const increment = isIsolation ? 1 : 2.5;
+    return {
+      type: 'weight',
+      label: 'Прогресс',
+      message: `Цель: +${increment}кг`,
+      weight: last.weight + increment,
+      reps: minReps,
+      volume: (last.weight + increment) * minReps * (last.setsCount || 3)
+    };
+  }
+};
+
 // Main App Component
 function AppContent() {
   const [user, setUser] = useState<User | null>(null);
@@ -440,6 +520,7 @@ function AppContent() {
   const [isTechLoading, setIsTechLoading] = useState(true);
   const [showProgramEditor, setShowProgramEditor] = useState(false);
   const [showTechEditor, setShowTechEditor] = useState(false);
+  const [currentRpes, setCurrentRpes] = useState<Record<string, Record<number, number>>>({});
   const [notification, setNotification] = useState<{show: boolean, title: string, message: string, type?: 'info' | 'success' | 'error'} | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
@@ -729,56 +810,8 @@ function AppContent() {
       .filter(r => !goalChangedAt || new Date(r.date) >= new Date(goalChangedAt))
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    // Add current record to history for analysis if it's not already there
     const fullHistory = [currentRecord as StrengthRecord, ...history];
-    
-    let suffix = '';
     const last = fullHistory[0];
-    const prev = fullHistory[1];
-    const prev2 = fullHistory[2];
-
-    if (goalType === 'hypertrophy' || goalType === 'recomposition') {
-      const vol = last.volume || 0;
-      const pVol = prev?.volume || 0;
-      const p2Vol = prev2?.volume || 0;
-      const avg = last.avgWeight || 0;
-      const pAvg = prev?.avgWeight || 0;
-
-      const toTons = (kg: number) => (kg / 1000).toFixed(2) + 'т';
-
-      if (prev && vol < pVol * 0.85) {
-        suffix = `Перегрузка! Вес тот же. Цель объём ${toTons(pVol)}`;
-      } else if (prev && prev2 && vol > pVol && pVol > p2Vol && avg >= pAvg) {
-        suffix = `Адаптация! +вес. Цель объём ${toTons(vol * 1.06)}`;
-      } else {
-        suffix = `Цель объём ${toTons(vol * 1.05)} (сейчас ${toTons(vol)})`;
-      }
-    } else if (goalType === 'strength') {
-      const max = last.maxWeight || last.weight || 0;
-      suffix = `Цель вес ${Math.round(max * 1.025)}кг (рекорд ${max})`;
-    } else if (goalType === 'fat_loss') {
-      const vol = last.volume || 0;
-      const pVol = prev?.volume || 0;
-      const toTons = (kg: number) => (kg / 1000).toFixed(2) + 'т';
-      if (prev && Math.abs(vol - pVol) / pVol < 0.05) {
-        suffix = `Стабильно. Цель +1 повтор к подходу`;
-      } else {
-        suffix = `Держи объём ${toTons(vol)}`;
-      }
-    } else if (goalType === 'endurance') {
-      suffix = `Цель +2 повтора к подходу`;
-    } else if (goalType === 'tone') {
-      const vol = last.volume || 0;
-      const pVol = prev?.volume || 0;
-      const p2Vol = prev2?.volume || 0;
-      if (prev && prev2 && Math.abs(vol - pVol) < 10 && Math.abs(pVol - p2Vol) < 10) {
-        suffix = `3 сессии стабильно. Можно +вес`;
-      } else {
-        suffix = `Регулярность — залог успеха!`;
-      }
-    } else {
-      suffix = `${last.weight}кг+`;
-    }
 
     const updatedProgram = JSON.parse(JSON.stringify(programData));
     let changed = false;
@@ -786,8 +819,25 @@ function AppContent() {
     Object.keys(updatedProgram).forEach(dayKey => {
       updatedProgram[dayKey].exercises.forEach((ex: any) => {
         if (ex.name.toLowerCase() === exercise.toLowerCase()) {
+          const goal = calculateExerciseGoal(ex, fullHistory, goalType || 'hypertrophy');
+          let suffix = '';
+          
+          if (goal) {
+            if (goal.type === 'deload') {
+              suffix = `🔄 ${goal.message}`;
+            } else if (goal.type === 'weight') {
+              suffix = `🚀 ${goal.message} (вес ${goal.weight}кг)`;
+            } else if (goal.type === 'stabilize') {
+              suffix = `⚖️ ${goal.message}`;
+            } else {
+              suffix = `📈 ${goal.message}`;
+            }
+          } else {
+            suffix = `${last.weight}кг+`;
+          }
+
           // Pattern to match any existing recommendation suffix
-          const weightPattern = /\s(ср\.|рекорд|прошлый раз|Цель|Перегрузка|Адаптация|Стабильно|Держи|3 сессии|Регулярность|\d+(\.\d+)?\+).*$/;
+          const weightPattern = /\s(ср\.|рекорд|прошлый раз|Цель|Перегрузка|Адаптация|Стабильно|Держи|3 сессии|Регулярность|🔄|🚀|📈|⚖️|\d+(\.\d+)?\+).*$/;
           if (!ex.tip) {
             ex.tip = suffix;
             changed = true;
@@ -1245,6 +1295,7 @@ function AppContent() {
 
           // Save if it's a strength exercise (not cardio) and has some result
           if (!originalEx.isCardio && !programData[currentDay].isCardio && (bestSet.weight > 0 || totalReps > 0 || volume > 0)) {
+            const rpe = (currentRpes[currentDay] || {})[i] || 8;
             await handleSaveStrength({
               exercise: ex.name,
               weight: bestSet.weight,
@@ -1256,7 +1307,8 @@ function AppContent() {
               setsCount,
               unit: originalEx.unit || 'раз',
               isBodyweight: originalEx.bodyweight || false,
-              isCardio: false
+              isCardio: false,
+              rpe
             });
           }
         }
@@ -1270,18 +1322,21 @@ function AppContent() {
       const updatedChecked = { ...checkedExercises, [currentDay]: [] };
       const updatedSets = { ...currentSets, [currentDay]: {} };
       const updatedNotes = { ...currentNotes, [currentDay]: {} };
+      const updatedRpes = { ...currentRpes, [currentDay]: {} };
 
       // Update local state immediately
       setCurrentDay(nextDay);
       setCheckedExercises(updatedChecked);
       setCurrentSets(updatedSets);
       setCurrentNotes(updatedNotes);
+      setCurrentRpes(updatedRpes);
 
       await saveWorkoutState({
         currentDay: nextDay,
         checkedExercises: updatedChecked,
         currentSets: updatedSets,
-        currentNotes: updatedNotes
+        currentNotes: updatedNotes,
+        currentRpes: updatedRpes
       });
       
       setNotification({
@@ -2000,6 +2055,13 @@ function AppContent() {
                 setCurrentNotes(prev => ({
                   ...prev,
                   [currentDay]: typeof newNotes === 'function' ? newNotes(prev[currentDay] || {}) : newNotes
+                }));
+              }}
+              currentRpes={currentRpes[currentDay] || {}}
+              setCurrentRpes={(newRpes: any | ((prev: any) => any)) => {
+                setCurrentRpes(prev => ({
+                  ...prev,
+                  [currentDay]: typeof newRpes === 'function' ? newRpes(prev[currentDay] || {}) : newRpes
                 }));
               }}
               onFinish={handleFinishWorkout}
@@ -4517,6 +4579,8 @@ function TodayPage({
   setCurrentSets,
   currentNotes,
   setCurrentNotes,
+  currentRpes,
+  setCurrentRpes,
   onFinish,
   workouts,
   programData,
@@ -4718,6 +4782,11 @@ function TodayPage({
                 }}
                 note={currentNotes[idx] || ''}
                 onUpdateNote={(val: string) => setCurrentNotes((prev: any) => ({ ...prev, [idx]: val }))}
+                rpe={currentRpes[idx] || 8}
+                onUpdateRpe={(val: number) => setCurrentRpes((prev: any) => ({
+                  ...prev,
+                  [idx]: val
+                }))}
               />
             </motion.div>
           ))}
@@ -4743,7 +4812,7 @@ function TodayPage({
   );
 }
 
-function ExerciseCard({ exercise, index, isCardioDay, isChecked, onCheck, sets, onUpdateSet, onAddSet, onRemoveSet, note, onUpdateNote }: any) {
+function ExerciseCard({ exercise, index, isCardioDay, isChecked, onCheck, sets, onUpdateSet, onAddSet, onRemoveSet, note, onUpdateNote, rpe, onUpdateRpe }: any) {
   const [isOpen, setIsOpen] = useState(false);
   const isCardio = exercise.isCardio || isCardioDay;
 
@@ -4858,6 +4927,40 @@ function ExerciseCard({ exercise, index, isCardioDay, isChecked, onCheck, sets, 
             {isCardio && (
               <div className="text-[9px] text-muted/70 italic px-1">
                 💡 Если тренажер показывает ккал — впиши их, иначе оставь поле пустым для авторасчета.
+              </div>
+            )}
+            {!isCardio && (
+              <div className="bg-surface-2/30 p-4 rounded-2xl border border-border/50">
+                <div className="flex justify-between items-center mb-3">
+                  <span className="text-[10px] text-muted uppercase font-bold tracking-wider">Сложность (RPE)</span>
+                  <span className={`text-xs font-bold px-2 py-0.5 rounded-lg ${
+                    rpe >= 9 ? 'bg-red-500/20 text-red-500' : 
+                    rpe >= 7 ? 'bg-accent/20 text-accent' : 
+                    'bg-done/20 text-done'
+                  }`}>
+                    {rpe}/10
+                  </span>
+                </div>
+                <div className="flex gap-1 justify-between">
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((val) => (
+                    <button
+                      key={val}
+                      onClick={() => onUpdateRpe(val)}
+                      className={`flex-1 h-8 rounded-lg text-[10px] font-bold transition-all ${
+                        rpe === val 
+                          ? (val >= 9 ? 'bg-red-500 text-white' : val >= 7 ? 'bg-accent text-white' : 'bg-done text-white')
+                          : 'bg-surface-2 text-muted hover:bg-surface-3'
+                      }`}
+                    >
+                      {val}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[9px] text-muted mt-2 italic">
+                  {rpe >= 9 ? 'Отказ или почти отказ. Нужно больше отдыха.' : 
+                   rpe >= 7 ? 'Тяжело, но техника сохранена. Хороший темп.' : 
+                   'Легко. В следующий раз можно добавить вес.'}
+                </p>
               </div>
             )}
             <div className="relative">
@@ -5546,9 +5649,20 @@ function ProgressPage({
                             <div className="text-[6px] text-muted/60 mb-1 leading-none">План на сегодня</div>
                           </div>
                           <div className="text-xl font-display font-bold text-done">
-                            {chartMetric === 'weight' ? (latest.isBodyweight ? latest.reps + (latest.unit === 'сек' ? 5 : 2) : latest.weight + 1) : 
-                             chartMetric === 'volume' ? (latest.isBodyweight ? latest.reps + (latest.unit === 'сек' ? 10 : 5) : ((Math.round((latest.volume || (latest.weight * latest.reps)) * 1.05)) / 1000).toFixed(2)) : 
-                             latest.reps + (latest.unit === 'сек' ? 5 : 2)}
+                            {(() => {
+                              const exDef = (Object.values(programData) as any[]).flatMap(d => d.exercises).find(ex => ex.name === name);
+                              const goal = calculateExerciseGoal(exDef, sorted, userProfile?.goalType || 'hypertrophy');
+                              
+                              if (!goal) return '—';
+
+                              if (chartMetric === 'weight') {
+                                return latest.isBodyweight ? goal.reps : goal.weight;
+                              } else if (chartMetric === 'volume') {
+                                return latest.isBodyweight ? goal.reps : (goal.volume / 1000).toFixed(2);
+                              } else {
+                                return goal.reps;
+                              }
+                            })()}
                             <span className="text-[10px] ml-0.5 opacity-70">
                               {chartMetric === 'weight' ? (latest.isBodyweight ? (latest.unit && latest.unit !== 'кг' ? latest.unit : 'раз') : 'кг') : 
                                chartMetric === 'volume' ? (latest.isBodyweight ? (latest.unit && latest.unit !== 'кг' ? latest.unit : 'раз') : 'т') : 
