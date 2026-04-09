@@ -1064,7 +1064,7 @@ update_tech_data — заполни технику
               animate={{ opacity: 1, y: 0, scale: 1 }}
               className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
-              <div className={`max-w-[85%] p-4 rounded-3xl text-sm leading-relaxed shadow-sm ${
+              <div className={`max-w-[95%] p-4 rounded-3xl text-sm leading-relaxed shadow-sm ${
                 m.role === 'user' 
                   ? 'bg-accent text-white rounded-tr-none' 
                   : 'bg-surface border border-border text-text rounded-tl-none'
