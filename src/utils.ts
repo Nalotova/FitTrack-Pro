@@ -1,5 +1,27 @@
 import { StrengthRecord } from './types';
 
+export const calculateCaloriesBurned = (
+  duration: number,
+  avgHeartRate: number | undefined,
+  weight: number,
+  age: number,
+  gender: 'male' | 'female',
+  isCardio: boolean
+): number => {
+  if (!duration || duration <= 0) return 0;
+  
+  if (avgHeartRate && avgHeartRate > 0) {
+    if (gender === 'male') {
+      return ((-55.0969 + (0.6309 * avgHeartRate) + (0.1988 * weight) + (0.2017 * age)) / 4.184) * duration;
+    } else {
+      return ((-20.4022 + (0.4472 * avgHeartRate) - (0.1263 * weight) + (0.074 * age)) / 4.184) * duration;
+    }
+  }
+  
+  const met = isCardio ? 7.0 : 4.5;
+  return (met * weight * duration) / 60;
+};
+
 export const calculateExerciseGoal = (
   exDef: any,
   history: StrengthRecord[],

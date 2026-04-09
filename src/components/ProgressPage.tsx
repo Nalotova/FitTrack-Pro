@@ -1,4 +1,4 @@
-import { calculateExerciseGoal } from '../utils';
+import { calculateExerciseGoal, calculateCaloriesBurned } from '../utils';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -801,7 +801,59 @@ export function ProgressPage({
             <div className="space-y-6">
               <h3 className="font-display text-2xl text-accent font-bold">История</h3>
               <div className="space-y-3">
-                {workouts.map(w => (
+                {workouts.map(w => {
+                  const displayVolume = w.totalVolume !== undefined ? w.totalVolume : w.exercises?.reduce((sum, ex) => {
+                    const isCardio = ex.isCardio || Object.values(programData || {}).some((day: any) => 
+                      day.exercises?.some((pEx: any) => pEx.name === ex.name && (pEx.isCardio || day.isCardio))
+                    );
+                    if (isCardio) return sum;
+                    return sum + (ex.sets?.reduce((setSum, set) => setSum + ((Number(set.weight) || 0) * (Number(set.reps) || 0)), 0) || 0);
+                  }, 0) || 0;
+
+                  let displayCalories = w.caloriesBurned;
+                  if (displayCalories === undefined || displayCalories === 0) {
+                    const isCardioWorkout = w.isCardio || programData[w.day]?.isCardio;
+                    if (isCardioWorkout) {
+                      displayCalories = w.exercises?.reduce((sum, ex) => {
+                        return sum + (ex.sets?.reduce((setSum, set) => {
+                          let cals = Number(set.cardioValues?.[2]) || 0;
+                          if (cals === 0) {
+                            const duration = Number(set.cardioValues?.[0] || set.weight) || 0;
+                            const hr = Number(set.cardioValues?.[1] || set.reps) || 0;
+                            if (duration > 0) {
+                              const userWeight = measurements && measurements.length > 0 ? measurements[0].weight : 70;
+                              const userAge = Number(userProfile?.age) || 30;
+                              const userGender = userProfile?.gender || 'male';
+                              cals = calculateCaloriesBurned(duration, hr > 0 ? hr : undefined, userWeight, userAge, userGender, true);
+                            }
+                          }
+                          return setSum + cals;
+                        }, 0) || 0);
+                      }, 0) || 0;
+                      displayCalories = Math.round(displayCalories);
+                    } else {
+                      // Estimate for old strength workouts
+                      const totalSets = w.exercises?.reduce((sum, ex) => sum + (ex.sets?.length || 0), 0) || 0;
+                      const estimatedDuration = totalSets * 3; // 3 mins per set
+                      if (estimatedDuration > 0) {
+                        const userWeight = measurements && measurements.length > 0 ? measurements[0].weight : 70;
+                        const userAge = Number(userProfile?.age) || 30;
+                        const userGender = userProfile?.gender || 'male';
+                        displayCalories = Math.round(calculateCaloriesBurned(
+                          estimatedDuration,
+                          undefined,
+                          userWeight,
+                          userAge,
+                          userGender,
+                          false
+                        ));
+                      } else {
+                        displayCalories = 0;
+                      }
+                    }
+                  }
+
+                  return (
                   <div key={w.id} className="bg-surface border-2 border-border rounded-3xl p-5 shadow-sm">
                     {editingWorkoutId === w.id ? (
                       <div className="space-y-4">
@@ -826,7 +878,7 @@ export function ProgressPage({
                         </div>
                       </div>
                     ) : (
-                      <div className="flex justify-between items-center">
+                      <div className="flex justify-between items-start">
                         <div>
                           <div className="text-[11px] text-muted font-bold uppercase tracking-wider mb-1">
                             {format(new Date(w.date), 'd MMMM · HH:mm', { locale: ru })}
@@ -834,18 +886,22 @@ export function ProgressPage({
                           <div className="text-[15px] font-bold text-text">
                             {w.day} — {programData[w.day]?.subtitle}
                           </div>
-                          <div className="text-[10px] text-muted mt-1">
-                            {w.exercises?.map(ex => {
-                              const isCardio = ex.isCardio || Object.values(programData || {}).some((day: any) => 
-                                day.exercises?.some((pEx: any) => pEx.name === ex.name && (pEx.isCardio || day.isCardio))
-                              );
-                              if (isCardio) {
-                                const totalMins = ex.sets?.reduce((sum, s) => sum + (Number(s.cardioValues?.[0] || s.weight) || 0), 0);
-                                return `${ex.name} (${totalMins} мин)`;
-                              }
-                              return ex.name;
-                            }).join(' · ')}
-                          </div>
+                          {(displayVolume > 0 || displayCalories > 0) && (
+                            <div className="flex gap-3 mt-3">
+                              {displayVolume > 0 && (
+                                <div className="bg-accent/10 text-accent px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1">
+                                  <Dumbbell size={12} />
+                                  {displayVolume} кг
+                                </div>
+                              )}
+                              {displayCalories > 0 && (
+                                <div className="bg-orange-500/10 text-orange-500 px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1">
+                                  <Zap size={12} />
+                                  {displayCalories} ккал
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                         <div className="flex items-center gap-2">
                           <button onClick={() => handleStartEditWorkout(w)} className="p-2 text-muted hover:text-accent transition-colors"><Edit2 size={16} /></button>
@@ -854,7 +910,7 @@ export function ProgressPage({
                       </div>
                     )}
                   </div>
-                ))}
+                )})}
               </div>
             </div>
           </motion.div>

@@ -14,7 +14,7 @@ import { ru } from 'date-fns/locale';
 import { auth, db, googleProvider, signInWithPopup, signOut, onAuthStateChanged, collection, query, where, onSnapshot, setDoc, getDoc, doc, deleteDoc, addDoc, writeBatch, getDocs, serverTimestamp, User, OperationType, handleFirestoreError, storage, ref, uploadBytes, getDownloadURL, deleteObject } from '../firebase';
 import { UserProfile, Workout, WeightMeasurement, StrengthRecord, TechItem } from '../types';
 import { goalTranslations, PROGRAM, DEFAULT_PROGRAM } from '../constants';
-import { calculateExerciseGoal } from '../utils';
+import { calculateExerciseGoal, calculateCaloriesBurned } from '../utils';
 
 import { GuideModal } from './GuideModal';
 import { ProgramEditor } from './ProgramEditor';
@@ -746,7 +746,7 @@ export function AppContent() {
   };
 
   // Workout Logic
-  const handleFinishWorkout = async () => {
+  const handleFinishWorkout = async (duration?: string, avgHeartRate?: string) => {
     if (!user || !programData || !programData[currentDay]) return;
     
     setNotification({
@@ -756,6 +756,8 @@ export function AppContent() {
       type: 'info'
     });
 
+    let totalVolume = 0;
+    
     const workoutToSave: Workout = {
       userId: user.uid,
       date: new Date().toISOString(),
@@ -773,6 +775,8 @@ export function AppContent() {
           };
           if (isCardio) {
             setObj.cardioValues = row.map((v: any) => Number(v) || 0);
+          } else {
+            totalVolume += setObj.weight * setObj.reps;
           }
           return setObj;
         });
@@ -790,6 +794,48 @@ export function AppContent() {
       notes: Object.values(currentNotes[currentDay] || {}).filter(Boolean).join('\n'),
       isCardio: programData[currentDay].isCardio || false
     };
+
+    const isCardioWorkout = programData[currentDay].isCardio || false;
+    
+    // Calculate calories
+    let caloriesBurned = 0;
+    let finalDuration = 0;
+    let finalHeartRate = 0;
+    
+    if (isCardioWorkout) {
+      // For cardio, sum up duration and calories from sets if available
+      workoutToSave.exercises.forEach(ex => {
+        ex.sets.forEach((set: any) => {
+          if (set.cardioValues && set.cardioValues.length >= 3) {
+            finalDuration += set.cardioValues[0] || 0;
+            caloriesBurned += set.cardioValues[2] || 0;
+          }
+        });
+      });
+    } else {
+      finalDuration = Number(duration) || 0;
+      finalHeartRate = Number(avgHeartRate) || 0;
+      
+      if (finalDuration > 0) {
+        const userWeight = measurements.length > 0 ? measurements[0].weight : 70;
+        const userAge = Number(userProfile?.age) || 30;
+        const userGender = userProfile?.gender || 'male';
+        
+        caloriesBurned = calculateCaloriesBurned(
+          finalDuration,
+          finalHeartRate > 0 ? finalHeartRate : undefined,
+          userWeight,
+          userAge,
+          userGender,
+          false
+        );
+      }
+    }
+
+    if (finalDuration > 0) workoutToSave.duration = finalDuration;
+    if (finalHeartRate > 0) workoutToSave.avgHeartRate = finalHeartRate;
+    if (caloriesBurned > 0) workoutToSave.caloriesBurned = Math.round(caloriesBurned);
+    if (!isCardioWorkout && totalVolume > 0) workoutToSave.totalVolume = totalVolume;
 
     try {
       // Clean workoutToSave of any undefined values just in case
@@ -871,10 +917,18 @@ export function AppContent() {
         currentRpes: updatedRpes
       });
       
+      let successMessage = '🎉 Тренировка завершена! Твой прогресс сохранен.';
+      if (!isCardioWorkout && totalVolume > 0) {
+        successMessage += `\nОбъем: ${totalVolume} кг`;
+      }
+      if (caloriesBurned > 0) {
+        successMessage += `\nСожжено: ${Math.round(caloriesBurned)} ккал`;
+      }
+
       setNotification({
         show: true,
         title: 'Отличная работа!',
-        message: '🎉 Тренировка завершена! Твой прогресс сохранен.',
+        message: successMessage,
         type: 'success'
       });
       setActiveTab('progress');

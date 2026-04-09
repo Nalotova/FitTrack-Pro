@@ -41,6 +41,9 @@ export function TodayPage({
   onReset,
   isLoading
 }: any) {
+  const [workoutDuration, setWorkoutDuration] = useState('');
+  const [workoutHeartRate, setWorkoutHeartRate] = useState('');
+
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-20 opacity-50">
@@ -246,12 +249,41 @@ export function TodayPage({
       </div>
 
       {done === total && !isCompletedToday && (
-        <button 
-          onClick={onFinish}
-          className="w-full py-5 bg-gradient-to-r from-done to-[#4a8e4a] text-white font-bold text-sm uppercase tracking-[0.2em] rounded-3xl shadow-xl hover:shadow-2xl hover:scale-[1.02] active:scale-95 transition-all"
-        >
-          ✓ Завершить тренировку
-        </button>
+        <div className="space-y-4">
+          {!program.isCardio && (
+            <div className="bg-surface p-5 rounded-3xl border border-border shadow-sm space-y-4">
+              <h3 className="text-sm font-bold text-accent mb-2">Итоги тренировки</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-muted uppercase tracking-wider mb-1">Время (мин)</label>
+                  <input
+                    type="number"
+                    value={workoutDuration}
+                    onChange={(e) => setWorkoutDuration(e.target.value)}
+                    placeholder="Например, 60"
+                    className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-sm text-text focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-muted uppercase tracking-wider mb-1">Ср. пульс (уд/мин)</label>
+                  <input
+                    type="number"
+                    value={workoutHeartRate}
+                    onChange={(e) => setWorkoutHeartRate(e.target.value)}
+                    placeholder="Опционально"
+                    className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-sm text-text focus:border-accent focus:ring-1 focus:ring-accent outline-none transition-all"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+          <button 
+            onClick={() => onFinish(workoutDuration, workoutHeartRate)}
+            className="w-full py-5 bg-gradient-to-r from-done to-[#4a8e4a] text-white font-bold text-sm uppercase tracking-[0.2em] rounded-3xl shadow-xl hover:shadow-2xl hover:scale-[1.02] active:scale-95 transition-all"
+          >
+            ✓ Завершить тренировку
+          </button>
+        </div>
       )}
 
       {isCompletedToday && (

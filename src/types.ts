@@ -28,6 +28,10 @@ export interface Workout {
   exercises: Exercise[];
   notes?: string;
   isCardio?: boolean;
+  duration?: number;
+  avgHeartRate?: number;
+  caloriesBurned?: number;
+  totalVolume?: number;
 }
 
 export interface WeightMeasurement {
