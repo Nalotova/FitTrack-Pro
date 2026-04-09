@@ -154,6 +154,20 @@
         "timestamp": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "role", "content", "timestamp"]
+    },
+    "SupportTicket": {
+      "title": "Support Ticket",
+      "description": "A support request from a user.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "message": { "type": "string" },
+        "screenshot": { "type": "string", "description": "Base64 encoded image string." },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["new", "in_progress", "resolved"] }
+      },
+      "required": ["userId", "email", "message", "createdAt"]
     }
   },
   "firestore": {
@@ -188,6 +202,10 @@
     "/coach_messages/{messageId}": {
       "schema": "CoachMessage",
       "description": "Chat history with the AI coach."
+    },
+    "/support_tickets/{ticketId}": {
+      "schema": "SupportTicket",
+      "description": "Support requests from users."
     }
   }
 }

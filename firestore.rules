@@ -189,6 +189,17 @@ service cloud.firestore {
              data.order is number;
     }
 
+    function isValidSupportTicket(data) {
+      return data.keys().hasAll(['userId', 'email', 'message', 'createdAt']) &&
+             data.keys().hasOnly(['userId', 'email', 'message', 'screenshot', 'createdAt', 'status']) &&
+             data.userId == request.auth.uid &&
+             isValidEmail(data.email) &&
+             data.message is string && data.message.size() > 0 && data.message.size() < 5000 &&
+             (!('screenshot' in data) || (data.screenshot is string && data.screenshot.size() < 2000000)) &&
+             isValidDateString(data.createdAt) &&
+             (!('status' in data) || data.status in ['new', 'in_progress', 'resolved']);
+    }
+
     // ===============================================================
     // Match Rules
     // ===============================================================
@@ -243,6 +254,13 @@ service cloud.firestore {
       allow read: if isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || isAdmin());
       allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
       allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    match /support_tickets/{ticketId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow create: if isAuthenticated() && isValidSupportTicket(request.resource.data);
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
     }
 
     match /{path=**} {

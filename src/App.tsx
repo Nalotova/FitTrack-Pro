@@ -3944,6 +3944,58 @@ function ProfilePage({
   };
 
   const [isConfirmOpen, setIsConfirmOpen] = useState<{ type: 'delete' | 'logout' | 'export' | 'import' | null; action: () => void }>({ type: null, action: () => {} });
+  const [isSupportOpen, setIsSupportOpen] = useState(false);
+  const [supportEmail, setSupportEmail] = useState(profile?.email || user?.email || '');
+  const [supportMessage, setSupportMessage] = useState('');
+  const [supportScreenshot, setSupportScreenshot] = useState<string | null>(null);
+  const [isSendingSupport, setIsSendingSupport] = useState(false);
+  const [supportSuccess, setSupportSuccess] = useState(false);
+
+  const handleScreenshotChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 1.5 * 1024 * 1024) {
+        setNotification({ message: 'Файл слишком большой (макс. 1.5МБ)', type: 'error' });
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setSupportScreenshot(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSendSupport = async () => {
+    if (!supportEmail || !supportMessage) {
+      setNotification({ message: 'Заполни все обязательные поля', type: 'error' });
+      return;
+    }
+    setIsSendingSupport(true);
+    try {
+      await addDoc(collection(db, 'support_tickets'), {
+        userId: user.uid,
+        email: supportEmail,
+        message: supportMessage,
+        screenshot: supportScreenshot,
+        createdAt: new Date().toISOString(),
+        status: 'new'
+      });
+      setSupportSuccess(true);
+      setTimeout(() => {
+        setIsSupportOpen(false);
+        setSupportSuccess(false);
+        setSupportMessage('');
+        setSupportScreenshot(null);
+      }, 3000);
+    } catch (error) {
+      console.error("Error sending support ticket:", error);
+      handleFirestoreError(error, OperationType.WRITE, 'support_tickets');
+    } finally {
+      setIsSendingSupport(false);
+    }
+  };
+
   const backupFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -4284,6 +4336,13 @@ function ProfilePage({
             </div>
             <ChevronRight size={20} className="text-muted" />
           </button>
+          <button onClick={() => setIsSupportOpen(true)} className="w-full flex items-center justify-between p-4 bg-surface-2/50 rounded-2xl hover:bg-accent/5 transition-all group border border-border/50">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-surface rounded-xl flex items-center justify-center text-text"><HelpCircle size={20} /></div>
+              <span className="text-sm font-bold text-text">Написать в поддержку</span>
+            </div>
+            <ChevronRight size={20} className="text-muted" />
+          </button>
           <button onClick={() => openConfirm('logout', onLogout)} className="w-full flex items-center justify-between p-4 bg-surface-2/50 rounded-2xl hover:bg-accent/5 transition-all group border border-border/50">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-surface rounded-xl flex items-center justify-center text-text"><LogOut size={20} /></div>
@@ -4293,6 +4352,90 @@ function ProfilePage({
           </button>
         </div>
       </div>
+
+      {isSupportOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm overflow-y-auto">
+          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-surface p-6 rounded-[32px] border border-border shadow-2xl w-full max-w-md my-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold text-text flex items-center gap-2">
+                <HelpCircle size={20} className="text-accent" /> Написать в поддержку
+              </h3>
+              <button onClick={() => setIsSupportOpen(false)} className="p-2 hover:bg-surface-2 rounded-full transition-colors">
+                <X size={20} className="text-muted" />
+              </button>
+            </div>
+
+            {supportSuccess ? (
+              <div className="py-10 text-center space-y-4">
+                <div className="w-16 h-16 bg-done/10 text-done rounded-full flex items-center justify-center mx-auto">
+                  <Check size={32} />
+                </div>
+                <h4 className="text-xl font-bold text-text">Отправлено!</h4>
+                <p className="text-sm text-muted">
+                  Твое сообщение успешно доставлено разработчикам. Мы ответим тебе на указанный email в ближайшее время.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-[10px] text-muted uppercase font-bold tracking-widest mb-1.5 ml-1">Твой Email</label>
+                  <input 
+                    type="email"
+                    value={supportEmail}
+                    onChange={(e) => setSupportEmail(e.target.value)}
+                    className="w-full bg-surface-2 border-2 border-border text-text p-3 rounded-2xl text-sm font-bold outline-none focus:border-accent transition-all"
+                    placeholder="example@mail.com"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-muted uppercase font-bold tracking-widest mb-1.5 ml-1">Сообщение</label>
+                  <textarea 
+                    value={supportMessage}
+                    onChange={(e) => setSupportMessage(e.target.value)}
+                    rows={4}
+                    className="w-full bg-surface-2 border-2 border-border text-text p-3 rounded-2xl text-sm font-bold outline-none focus:border-accent transition-all resize-none"
+                    placeholder="Опиши свою проблему или предложение..."
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-muted uppercase font-bold tracking-widest mb-1.5 ml-1">Скриншот (необязательно)</label>
+                  <div className="flex items-center gap-3">
+                    <label className="flex-1 flex items-center justify-center gap-2 p-3 bg-surface-2 border-2 border-dashed border-border rounded-2xl hover:border-accent/50 cursor-pointer transition-all group">
+                      <input type="file" accept="image/*" onChange={handleScreenshotChange} className="hidden" />
+                      <ImageIcon size={18} className="text-muted group-hover:text-accent" />
+                      <span className="text-xs font-bold text-muted group-hover:text-accent">
+                        {supportScreenshot ? 'Скриншот выбран' : 'Прикрепить скрин'}
+                      </span>
+                    </label>
+                    {supportScreenshot && (
+                      <button onClick={() => setSupportScreenshot(null)} className="p-3 bg-red-500/10 text-red-500 rounded-2xl">
+                        <Trash2 size={18} />
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[9px] text-muted mt-1.5 ml-1 italic">
+                    💡 Скриншот поможет нам быстрее понять и решить твой вопрос.
+                  </p>
+                </div>
+
+                <button 
+                  onClick={handleSendSupport}
+                  disabled={isSendingSupport || !supportEmail || !supportMessage}
+                  className="w-full py-4 bg-accent text-white font-bold rounded-2xl shadow-lg shadow-accent/20 flex items-center justify-center gap-2 disabled:opacity-50 disabled:shadow-none transition-all mt-2"
+                >
+                  {isSendingSupport ? (
+                    <Loader2 size={20} className="animate-spin" />
+                  ) : (
+                    <>
+                      <Send size={20} /> Отправить
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+          </motion.div>
+        </div>
+      )}
 
       {isConfirmOpen.type && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
