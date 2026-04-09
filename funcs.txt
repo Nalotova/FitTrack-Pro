@@ -1,0 +1,16 @@
+324:function GuideModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) {
+559:function AppContent() {
+2367:function ProgramEditor({ program, onSave, onClose }: { program: any; onSave: (data: any) => Promise<void>; onClose: () => void }) {
+2820:function CoachPage({ 
+4056:function ProfilePage({ 
+4620:function NavTab({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
+4633:function TodayPage({ 
+4875:function ExerciseCard({ exercise, index, isCardioDay, isChecked, onCheck, sets, onUpdateSet, onAddSet, onRemoveSet, note, onUpdateNote, rpe, onUpdateRpe }: any) {
+5042:function ProgressPage({ 
+6092:function StatItem({ value, label, valueSize = "text-3xl" }: { value: string | number, label: string, valueSize?: string }) {
+6101:function StrengthPage({ 
+6346:function WeightPage({ 
+7184:function TechPage({ items, onEdit, isLoading, onBack }: { items: TechItem[]; onEdit: () => void; isLoading: boolean; onBack: () => void }) {
+7255:function TechEditor({ items, onSave, onClose }: { items: TechItem[]; onSave: (items: TechItem[]) => Promise<void>; onClose: () => void }) {
+7395:function TechCard({ title, subtitle, content }: { title: string; subtitle: string; content: string }) {
+7419:export default function App() {
