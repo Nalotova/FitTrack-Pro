@@ -24,6 +24,8 @@ import { goalTranslations, PROGRAM, DEFAULT_PROGRAM } from '../constants';
 export function ExerciseCard({ exercise, index, isCardioDay, isChecked, onCheck, sets, onUpdateSet, onAddSet, onRemoveSet, note, onUpdateNote, rpe, onUpdateRpe }: any) {
   const [isOpen, setIsOpen] = useState(false);
   const isCardio = exercise.isCardio || isCardioDay;
+  const isStatic = exercise.isStatic || false;
+  const staticType = exercise.staticType || 'time';
 
   return (
     <div className={`bg-surface border-2 rounded-3xl overflow-hidden transition-all shadow-sm ${isChecked ? 'border-done bg-done/5' : 'border-border'}`}>
@@ -36,6 +38,7 @@ export function ExerciseCard({ exercise, index, isCardioDay, isChecked, onCheck,
           <div className="flex items-center gap-2">
             <div className="text-[10px] text-accent-2 font-bold uppercase tracking-wider">{exercise.scheme}</div>
             {isCardio && <span className="text-[9px] bg-accent/10 text-accent px-1.5 py-0.5 rounded-lg font-bold uppercase">Кардио</span>}
+            {isStatic && <span className="text-[9px] bg-purple-500/10 text-purple-500 px-1.5 py-0.5 rounded-lg font-bold uppercase">Статика</span>}
           </div>
           {exercise.tip && <div className="text-[9px] text-muted mt-1 italic">💡 {exercise.tip}</div>}
         </div>
@@ -50,9 +53,9 @@ export function ExerciseCard({ exercise, index, isCardioDay, isChecked, onCheck,
       <AnimatePresence>
         {isOpen && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="px-4 pb-4 space-y-4">
-            <div className={isCardio ? "space-y-2" : "grid grid-cols-2 gap-3"}>
+            <div className={isCardio || isStatic ? "space-y-2" : "grid grid-cols-2 gap-3"}>
               {Array(Math.max(exercise.sets || 0, sets.length)).fill(0).map((_, sIdx) => (
-                <div key={sIdx} className={isCardio ? "flex items-center gap-2" : "bg-surface-2/50 border border-border rounded-2xl p-3 text-center"}>
+                <div key={sIdx} className={isCardio || isStatic ? "flex items-center gap-2" : "bg-surface-2/50 border border-border rounded-2xl p-3 text-center"}>
                   {isCardio ? (
                     <>
                       <div className="text-[10px] text-muted font-bold w-8 flex-shrink-0">С{sIdx + 1}</div>
@@ -87,6 +90,44 @@ export function ExerciseCard({ exercise, index, isCardioDay, isChecked, onCheck,
                             onClick={(e) => { e.stopPropagation(); onAddSet(); }}
                             className="w-8 h-8 bg-accent/10 text-accent rounded-lg flex items-center justify-center hover:bg-accent/20 transition-all"
                             title="Добавить интервал"
+                          >
+                            <Plus size={16} />
+                          </button>
+                        ) : (
+                          <div className="w-8" />
+                        )}
+                      </div>
+                    </>
+                  ) : isStatic ? (
+                    <>
+                      <div className="text-[10px] text-muted font-bold w-8 flex-shrink-0">С{sIdx + 1}</div>
+                      <div className="flex-1 flex items-center gap-3 bg-surface-2/30 border border-border/50 p-2 rounded-xl">
+                        <div className="flex-1 flex flex-col items-center">
+                          <input 
+                            type="number" 
+                            className="w-full bg-transparent text-center text-sm p-1 outline-none font-bold"
+                            placeholder={staticType === 'time' ? "сек" : "раз"}
+                            value={sets[sIdx]?.[0] || ''}
+                            onChange={(e) => onUpdateSet(sIdx, 0, e.target.value)}
+                          />
+                          <span className="text-[8px] text-muted font-bold uppercase">{staticType === 'time' ? 'сек' : 'раз'}</span>
+                        </div>
+                      </div>
+                      <div className="flex gap-1 flex-shrink-0">
+                        {sets.length > 1 ? (
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); onRemoveSet(sIdx); }}
+                            className="w-8 h-8 bg-red-500/10 text-red-500 rounded-lg flex items-center justify-center hover:bg-red-500/20 transition-all"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        ) : (
+                          <div className="w-8" />
+                        )}
+                        {sIdx === Math.max(exercise.sets || 0, sets.length) - 1 ? (
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); onAddSet(); }}
+                            className="w-8 h-8 bg-accent/10 text-accent rounded-lg flex items-center justify-center hover:bg-accent/20 transition-all"
                           >
                             <Plus size={16} />
                           </button>

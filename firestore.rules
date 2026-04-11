@@ -25,10 +25,14 @@ service cloud.firestore {
     //   - day: string (required)
     //   - name: string (optional, 1-100 chars)
     //   - isCardio: bool (optional)
+    //   - isStatic: bool (optional)
+    //   - staticType: string (optional)
     //   - notes: string (optional)
     //   - exercises: list (required, max 50 items)
     //     - name: string (required)
     //     - isCardio: bool (optional)
+    //     - isStatic: bool (optional)
+    //     - staticType: string (optional)
     //     - fields: list (optional)
     //     - sets: list (required)
     //       - reps: number (required, positive)
@@ -117,13 +121,19 @@ service cloud.firestore {
 
     function isValidWorkout(data) {
       return data.keys().hasAll(['userId', 'date', 'day', 'exercises']) &&
-             data.keys().hasOnly(['userId', 'date', 'day', 'exercises', 'notes', 'name', 'isCardio']) &&
+             data.keys().hasOnly(['userId', 'date', 'day', 'exercises', 'notes', 'name', 'isCardio', 'isStatic', 'staticType', 'duration', 'avgHeartRate', 'caloriesBurned', 'totalVolume']) &&
              data.userId == request.auth.uid &&
              isValidDateString(data.date) &&
              data.day is string && data.day.size() > 0 && data.day.size() < 100 &&
              (!('name' in data) || (data.name is string && data.name.size() > 0 && data.name.size() <= 100)) &&
              (!('notes' in data) || (data.notes is string && data.notes.size() < 10000)) &&
              (!('isCardio' in data) || data.isCardio is bool) &&
+             (!('isStatic' in data) || data.isStatic is bool) &&
+             (!('staticType' in data) || (data.staticType is string && data.staticType in ['time', 'reps'])) &&
+             (!('duration' in data) || data.duration is number) &&
+             (!('avgHeartRate' in data) || data.avgHeartRate is number) &&
+             (!('caloriesBurned' in data) || data.caloriesBurned is number) &&
+             (!('totalVolume' in data) || data.totalVolume is number) &&
              data.exercises is list && data.exercises.size() <= 50;
     }
 
@@ -161,7 +171,7 @@ service cloud.firestore {
     }
 
     function isValidStrengthRecord(data) {
-      let allowedFields = ['userId', 'date', 'exercise', 'weight', 'reps', 'volume', 'avgWeight', 'maxWeight', 'totalReps', 'setsCount', 'unit', 'isBodyweight', 'isCardio', 'rpe'];
+      let allowedFields = ['userId', 'date', 'exercise', 'weight', 'reps', 'volume', 'avgWeight', 'maxWeight', 'totalReps', 'setsCount', 'unit', 'isBodyweight', 'isCardio', 'isStatic', 'staticType', 'rpe'];
       return data.keys().hasAll(['userId', 'date', 'exercise', 'weight', 'reps']) &&
              data.keys().hasOnly(allowedFields) &&
              data.userId == request.auth.uid &&
@@ -177,6 +187,8 @@ service cloud.firestore {
              (!('unit' in data) || data.unit is string) &&
              (!('isBodyweight' in data) || data.isBodyweight is bool) &&
              (!('isCardio' in data) || data.isCardio is bool) &&
+             (!('isStatic' in data) || data.isStatic is bool) &&
+             (!('staticType' in data) || (data.staticType is string && data.staticType in ['time', 'reps'])) &&
              (!('rpe' in data) || (data.rpe is number && data.rpe >= 0 && data.rpe <= 10));
     }
 

@@ -764,6 +764,7 @@ export function AppContent() {
       day: currentDay,
       exercises: programData[currentDay].exercises.map((ex: any, i: number) => {
         const isCardio = ex.isCardio || programData[currentDay].isCardio || false;
+        const isStatic = ex.isStatic || false;
         const exerciseSets = (currentSets[currentDay] || {})[i] || [];
         const cardioFields = isCardio ? ["мин", "пульс", "ккал", ...(ex.fields || []).filter((f: string) => f !== "мин" && f !== "пульс" && f !== "ккал" && f !== "время" && f !== "средний пульс")] : [];
         
@@ -775,6 +776,9 @@ export function AppContent() {
           };
           if (isCardio) {
             setObj.cardioValues = row.map((v: any) => Number(v) || 0);
+          } else if (isStatic) {
+            setObj.reps = Number(row[0]) || 0; // For static, we use reps field for either seconds or reps
+            setObj.weight = 0;
           } else {
             totalVolume += setObj.weight * setObj.reps;
           }
@@ -784,10 +788,14 @@ export function AppContent() {
         const exObj: any = {
           name: ex.name,
           isCardio,
+          isStatic,
           sets
         };
         if (isCardio) {
           exObj.fields = cardioFields;
+        }
+        if (isStatic) {
+          exObj.staticType = ex.staticType;
         }
         return exObj;
       }),
@@ -868,7 +876,8 @@ export function AppContent() {
 
           // Save if it has some result
           const isCardio = originalEx.isCardio || programData[currentDay].isCardio || false;
-          const hasResult = isCardio 
+          const isStatic = originalEx.isStatic || false;
+          const hasResult = (isCardio || isStatic)
             ? (bestSet.weight > 0 || bestSet.reps > 0) 
             : (bestSet.weight > 0 || totalReps > 0 || volume > 0);
 
@@ -883,9 +892,11 @@ export function AppContent() {
               maxWeight,
               totalReps,
               setsCount,
-              unit: originalEx.unit || (isCardio ? 'мин' : 'раз'),
-              isBodyweight: originalEx.bodyweight || false,
+              unit: originalEx.unit || (isCardio ? 'мин' : (isStatic ? (originalEx.staticType === 'time' ? 'сек' : 'раз') : 'раз')),
+              isBodyweight: originalEx.bodyweight || isStatic || false,
               isCardio: isCardio,
+              isStatic: isStatic,
+              staticType: originalEx.staticType,
               rpe
             });
           }

@@ -79,6 +79,25 @@ export const calculateExerciseGoal = (
     };
   }
 
+  // Static Progression
+  if (exDef?.isStatic || last.isStatic) {
+    const isTime = (exDef?.staticType || last.staticType) === 'time';
+    const currentVal = last.reps; // reps field used for time (sec) or reps
+    
+    // Increase by 5-10 seconds or 1-2 reps
+    const increment = isTime ? (rpe <= 7 ? 10 : 5) : (rpe <= 7 ? 2 : 1);
+    const nextVal = rpe >= 9 ? currentVal : currentVal + increment;
+    
+    return {
+      type: 'progression',
+      label: 'Прогрессия',
+      message: rpe >= 9 ? 'Тяжело! Закрепи результат' : `Добавь ${increment} ${isTime ? 'сек' : 'повтор'}`,
+      weight: 0,
+      reps: nextVal,
+      volume: nextVal
+    };
+  }
+
   // Double Progression Logic
   if (last.reps < maxReps) {
     // Goal: Increase reps at current weight

@@ -8,6 +8,8 @@ export interface Exercise {
   name: string;
   sets: Set[];
   isCardio?: boolean;
+  isStatic?: boolean;
+  staticType?: 'time' | 'reps';
   fields?: string[];
   rpe?: number;
 }
@@ -81,6 +83,8 @@ export interface StrengthRecord {
   unit?: string;
   isBodyweight?: boolean;
   isCardio?: boolean;
+  isStatic?: boolean;
+  staticType?: 'time' | 'reps';
   rpe?: number;
 }
 

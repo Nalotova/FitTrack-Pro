@@ -197,8 +197,9 @@ export function TodayPage({
                   setCurrentSets((prev: any) => {
                     const updated = { ...prev };
                     const isCardio = ex.isCardio || program.isCardio;
+                    const isStatic = ex.isStatic || false;
                     const cardioFields = ["мин", "пульс", "ккал", ...(ex.fields || []).filter((f: string) => f !== "мин" && f !== "пульс" && f !== "ккал" && f !== "время" && f !== "средний пульс")];
-                    const fieldCount = isCardio ? cardioFields.length : 2;
+                    const fieldCount = isCardio ? cardioFields.length : (isStatic ? 1 : 2);
                     
                     if (!updated[idx]) {
                       updated[idx] = Array(ex.sets).fill(null).map(() => Array(fieldCount).fill(''));
@@ -221,8 +222,9 @@ export function TodayPage({
                   setCurrentSets((prev: any) => {
                     const updated = { ...prev };
                     const isCardio = ex.isCardio || program.isCardio;
+                    const isStatic = ex.isStatic || false;
                     const cardioFields = ["мин", "пульс", "ккал", ...(ex.fields || []).filter((f: string) => f !== "мин" && f !== "пульс" && f !== "ккал" && f !== "время" && f !== "средний пульс")];
-                    const fieldCount = isCardio ? cardioFields.length : 2;
+                    const fieldCount = isCardio ? cardioFields.length : (isStatic ? 1 : 2);
                     
                     if (!updated[idx]) {
                       updated[idx] = Array(ex.sets).fill(null).map(() => Array(fieldCount).fill(''));

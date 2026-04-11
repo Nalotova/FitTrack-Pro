@@ -59,17 +59,22 @@ export function ProgramEditor({ program, onSave, onClose }: { program: any; onSa
     }
   };
 
-  const addExercise = (day: string, type: 'strength' | 'cardio') => {
+  const addExercise = (day: string, type: 'strength' | 'cardio' | 'static') => {
     const isCardio = type === 'cardio';
+    const isStatic = type === 'static';
     const newExercise: any = {
-      name: isCardio ? 'Бег / Ходьба' : 'Новое упражнение',
-      scheme: isCardio ? '30 мин' : '3 x 12',
+      name: isStatic ? 'Планка' : (isCardio ? 'Бег / Ходьба' : 'Новое упражнение'),
+      scheme: isStatic ? '3 x 60 сек' : (isCardio ? '30 мин' : '3 x 12'),
       sets: isCardio ? 1 : 3,
       tip: '',
-      isCardio: isCardio
+      isCardio: isCardio,
+      isStatic: isStatic
     };
     if (isCardio) {
       newExercise.fields = ["дистанция"];
+    }
+    if (isStatic) {
+      newExercise.staticType = 'time';
     }
     setLocalProgram((prev: any) => ({
       ...prev,
@@ -338,6 +343,12 @@ export function ProgramEditor({ program, onSave, onClose }: { program: any; onSa
                 >
                   <Plus size={14} className="text-accent" /> Кардио
                 </button>
+                <button 
+                  onClick={() => addExercise(selectedDay, 'static')}
+                  className="flex-1 flex items-center justify-center gap-2 py-3 bg-surface-2 border-2 border-border rounded-xl text-[10px] font-bold uppercase tracking-widest text-text hover:border-accent/30 transition-all"
+                >
+                  <Plus size={14} className="text-accent" /> Статика
+                </button>
               </div>
             </div>
 
@@ -345,8 +356,12 @@ export function ProgramEditor({ program, onSave, onClose }: { program: any; onSa
               {localProgram[selectedDay].exercises.map((ex: any, idx: number) => (
                 <div key={idx} className="bg-surface p-5 rounded-[32px] border border-border shadow-sm space-y-4 relative">
                   <div className="absolute top-4 right-4 flex items-center gap-2">
-                    <div className={`px-2 py-1 rounded-lg text-[8px] font-bold uppercase tracking-widest ${ex.isCardio ? 'bg-blue-500/10 text-blue-500' : 'bg-accent/10 text-accent'}`}>
-                      {ex.isCardio ? 'Кардио' : 'Силовое'}
+                    <div className={`px-2 py-1 rounded-lg text-[8px] font-bold uppercase tracking-widest ${
+                      ex.isStatic ? 'bg-purple-500/10 text-purple-500' : 
+                      ex.isCardio ? 'bg-blue-500/10 text-blue-500' : 
+                      'bg-accent/10 text-accent'
+                    }`}>
+                      {ex.isStatic ? 'Статика' : ex.isCardio ? 'Кардио' : 'Силовое'}
                     </div>
                     <button 
                       onClick={() => removeExercise(selectedDay, idx)}
@@ -368,7 +383,7 @@ export function ProgramEditor({ program, onSave, onClose }: { program: any; onSa
                     </div>
                     <div className="space-y-2">
                       <label className="text-[10px] text-muted uppercase font-bold tracking-widest ml-1">
-                        {ex.isCardio ? 'Цель (напр. 30 мин)' : 'Схема (напр. 3 x 12)'}
+                        {ex.isStatic ? 'Цель (напр. 60 сек)' : ex.isCardio ? 'Цель (напр. 30 мин)' : 'Схема (напр. 3 x 12)'}
                       </label>
                       <input 
                         type="text" 
@@ -378,6 +393,36 @@ export function ProgramEditor({ program, onSave, onClose }: { program: any; onSa
                       />
                     </div>
                   </div>
+
+                  {ex.isStatic && (
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-muted uppercase font-bold tracking-widest ml-1">Учет прогресса</label>
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => {
+                            updateExercise(selectedDay, idx, 'staticType', 'time');
+                            updateExercise(selectedDay, idx, 'scheme', (ex.sets || 3) + ' x 60 сек');
+                          }}
+                          className={`flex-1 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest border-2 transition-all ${
+                            ex.staticType === 'time' ? 'bg-accent text-white border-accent' : 'bg-surface-2 border-border text-muted'
+                          }`}
+                        >
+                          По времени
+                        </button>
+                        <button 
+                          onClick={() => {
+                            updateExercise(selectedDay, idx, 'staticType', 'reps');
+                            updateExercise(selectedDay, idx, 'scheme', (ex.sets || 3) + ' x 15');
+                          }}
+                          className={`flex-1 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest border-2 transition-all ${
+                            ex.staticType === 'reps' ? 'bg-accent text-white border-accent' : 'bg-surface-2 border-border text-muted'
+                          }`}
+                        >
+                          По повторам
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
