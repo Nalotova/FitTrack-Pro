@@ -201,8 +201,8 @@ export function CoachPage({
 
 Ты умеешь:
 1. Составлять персональные программы тренировок и записывать их через update_training_program.
-   - Ты различаешь три типа упражнений: силовые, кардио и статика.
-   - СТАТИКА (isStatic: true): упражнения на удержание (планка, уголок, стульчик). Ты должен выбрать staticType: 'time' (учет в секундах) или 'reps' (учет в повторах). Для планки всегда используй 'time'.
+   - Ты различаешь три типа упражнений: силовые, кардио и Bodyweight (собственный вес).
+   - Bodyweight (isStatic: true): упражнения на удержание (планка, уголок) или динамика с весом тела. Ты должен выбрать staticType: 'time' (учет в секундах) или 'reps' (учет в повторах). Для планки всегда используй 'time'.
 2. Создавать технику выполнения упражнений и записывать через update_tech_data.
 3. Записывать замеры тела через add_bioimpedance_measurement.
 4. Анализировать фото, документы, скриншоты.
@@ -435,7 +435,7 @@ update_tech_data — заполни технику
   подсказка по технике,
   стартовый вес с учётом пола и уровня
 - Кардио-дни с флагом isCardio
-- Статические упражнения с флагом isStatic: true и указанием staticType ('time' или 'reps').
+- Упражнения с собственным весом (Bodyweight) с флагом isStatic: true и указанием staticType ('time' или 'reps').
 
 ---
 
@@ -636,8 +636,8 @@ update_tech_data — заполни технику
                                   sets: { type: Type.NUMBER, description: "Количество подходов или интервалов" },
                                   tip: { type: Type.STRING, description: "Подсказка или техника выполнения" },
                                   isCardio: { type: Type.BOOLEAN, description: "Является ли упражнение кардио" },
-                                  isStatic: { type: Type.BOOLEAN, description: "Является ли упражнение статическим (планка и т.д.)" },
-                                  staticType: { type: Type.STRING, description: "Тип учета для статики: 'time' (секунды) или 'reps' (повторы)" },
+                                  isStatic: { type: Type.BOOLEAN, description: "Является ли упражнение Bodyweight (собственный вес, планка и т.д.)" },
+                                  staticType: { type: Type.STRING, description: "Тип учета для Bodyweight: 'time' (секунды) или 'reps' (повторы)" },
                                   fields: { 
                                     type: Type.ARRAY, 
                                     items: { type: Type.STRING },

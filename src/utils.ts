@@ -79,7 +79,7 @@ export const calculateExerciseGoal = (
     };
   }
 
-  // Static Progression
+  // Bodyweight Progression
   if (exDef?.isStatic || last.isStatic) {
     const isTime = (exDef?.staticType || last.staticType) === 'time';
     const currentVal = last.reps; // reps field used for time (sec) or reps

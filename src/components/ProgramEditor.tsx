@@ -347,7 +347,7 @@ export function ProgramEditor({ program, onSave, onClose }: { program: any; onSa
                   onClick={() => addExercise(selectedDay, 'static')}
                   className="flex-1 flex items-center justify-center gap-2 py-3 bg-surface-2 border-2 border-border rounded-xl text-[10px] font-bold uppercase tracking-widest text-text hover:border-accent/30 transition-all"
                 >
-                  <Plus size={14} className="text-accent" /> Статика
+                  <Plus size={14} className="text-accent" /> Bodyweight
                 </button>
               </div>
             </div>
@@ -361,7 +361,7 @@ export function ProgramEditor({ program, onSave, onClose }: { program: any; onSa
                       ex.isCardio ? 'bg-blue-500/10 text-blue-500' : 
                       'bg-accent/10 text-accent'
                     }`}>
-                      {ex.isStatic ? 'Статика' : ex.isCardio ? 'Кардио' : 'Силовое'}
+                      {ex.isStatic ? 'Bodyweight' : ex.isCardio ? 'Кардио' : 'Силовое'}
                     </div>
                     <button 
                       onClick={() => removeExercise(selectedDay, idx)}

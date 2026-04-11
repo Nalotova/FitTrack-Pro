@@ -38,7 +38,7 @@ export function ExerciseCard({ exercise, index, isCardioDay, isChecked, onCheck,
           <div className="flex items-center gap-2">
             <div className="text-[10px] text-accent-2 font-bold uppercase tracking-wider">{exercise.scheme}</div>
             {isCardio && <span className="text-[9px] bg-accent/10 text-accent px-1.5 py-0.5 rounded-lg font-bold uppercase">Кардио</span>}
-            {isStatic && <span className="text-[9px] bg-purple-500/10 text-purple-500 px-1.5 py-0.5 rounded-lg font-bold uppercase">Статика</span>}
+            {isStatic && <span className="text-[9px] bg-purple-500/10 text-purple-500 px-1.5 py-0.5 rounded-lg font-bold uppercase">Bodyweight</span>}
           </div>
           {exercise.tip && <div className="text-[9px] text-muted mt-1 italic">💡 {exercise.tip}</div>}
         </div>
