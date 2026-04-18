@@ -494,11 +494,12 @@ update_tech_data — заполни технику
           } catch (err: any) {
             const errStr = err?.message?.toLowerCase() || "";
             const isRateLimit = errStr.includes("quota") || errStr.includes("429") || errStr.includes("rate limit") || errStr.includes("rate exceeded");
+            const isTransientError = errStr.includes("502") || errStr.includes("503") || errStr.includes("504") || errStr.includes("bad gateway") || errStr.includes("service unavailable") || errStr.includes("deadline exceeded");
             
-            if (isRateLimit && retryCount < maxRetries) {
+            if ((isRateLimit || isTransientError) && retryCount < maxRetries) {
               retryCount++;
               const delay = Math.pow(2, retryCount) * 1000;
-              console.warn(`Rate limit hit, retrying in ${delay}ms (attempt ${retryCount}/${maxRetries})...`);
+              console.warn(`${isRateLimit ? 'Rate limit' : 'Transient error'} hit, retrying in ${delay}ms (attempt ${retryCount}/${maxRetries})...`);
               await new Promise(resolve => setTimeout(resolve, delay));
               continue;
             }
@@ -839,17 +840,25 @@ update_tech_data — заполни технику
       console.error("Coach error details:", error);
       
       let errorMessage = "Извини, произошла ошибка при связи с ИИ. Попробуй еще раз позже или проверь интернет-соединение. 🧘‍♀️";
+      const errorStr = error?.message?.toLowerCase() || "";
       
-      if (error?.message?.includes("API key")) {
+      if (errorStr.includes("api key")) {
         errorMessage = "Ошибка: API ключ не найден или недействителен. Пожалуйста, проверьте настройки. 🧘‍♀️";
-      } else if (error?.message?.toLowerCase().includes("safety") || error?.message?.toLowerCase().includes("blocked")) {
+      } else if (errorStr.includes("safety") || errorStr.includes("blocked")) {
         errorMessage = "Извини, запрос был заблокирован фильтрами безопасности. Попробуй перефразировать вопрос. 🧘‍♀️";
-      } else if (error?.message?.toLowerCase().includes("quota") || error?.message?.toLowerCase().includes("429") || error?.message?.toLowerCase().includes("rate exceeded")) {
+      } else if (errorStr.includes("quota") || errorStr.includes("429") || errorStr.includes("rate exceeded")) {
         errorMessage = "Превышен лимит запросов к ИИ (Rate Limit). Пожалуйста, подождите немного и попробуйте снова. 🧘‍♀️";
-      } else if (error?.message?.includes("500") || error?.message?.includes("503")) {
-        errorMessage = "Сервер ИИ временно недоступен. Попробуйте еще раз через минуту. 🧘‍♀️";
+      } else if (errorStr.includes("502") || errorStr.includes("504") || errorStr.includes("bad gateway") || errorStr.includes("gateway timeout")) {
+        errorMessage = "У сервера временные трудности (Bad Gateway). Я попробовала переспросить, но не получилось. Попробуй нажать на стрелочку еще раз через мгновение! 🧘‍♀️";
+      } else if (errorStr.includes("500") || errorStr.includes("503")) {
+        errorMessage = "Сервер ИИ временно недоступен (503). Попробуйте еще раз через минуту. 🧘‍♀️";
       } else {
-        errorMessage = `Ошибка связи: ${error?.message || "Неизвестная ошибка"}. Попробуйте очистить чат (корзина) и повторить. 🧘‍♀️`;
+        // Clear up the message if it contains JSON/HTML
+        let displayError = error?.message || "Неизвестная ошибка";
+        if (displayError.includes("<html") || displayError.includes("502 bad gateway")) {
+          displayError = "Системный сбой (502). Попробуйте отправить сообщение еще раз.";
+        }
+        errorMessage = `Ошибка связи: ${displayError}. 🧘‍♀️`;
       }
       
       onAddMessage({ role: 'assistant', content: errorMessage });
