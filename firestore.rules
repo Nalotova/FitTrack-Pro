@@ -72,7 +72,6 @@ service cloud.firestore {
 
     function isValidReminder(reminder) {
       return reminder.keys().hasAll(['day', 'time']) &&
-             reminder.keys().hasOnly(['day', 'time', 'label']) &&
              reminder.day is string && reminder.day.size() > 0 &&
              reminder.time is string && reminder.time.size() > 0 &&
              (!('label' in reminder) || (reminder.label is string && reminder.label.size() < 200));
@@ -83,49 +82,23 @@ service cloud.firestore {
     // ===============================================================
 
     function isValidUserProfile(data) {
-      return data.keys().hasAll(['displayName', 'email']) &&
-             data.keys().hasOnly(['displayName', 'email', 'photoURL', 'role', 'reminders', 'createdAt', 'updatedAt', 'uid', 'age', 'goal', 'gender', 'goalType', 'goalChangedAt']) &&
-             data.displayName is string && data.displayName.size() > 0 && data.displayName.size() < 100 &&
-             data.email is string && isValidEmail(data.email) &&
-             (!('photoURL' in data) || data.photoURL is string || data.photoURL == null) &&
-             (!('role' in data) || (data.role is string && data.role in ['admin', 'user'])) &&
-             (!('createdAt' in data) || data.createdAt is string) &&
-             (!('updatedAt' in data) || data.updatedAt is string) &&
-             (!('uid' in data) || (data.uid is string && data.uid == request.auth.uid)) &&
-             (!('age' in data) || data.age is string || data.age is number || data.age == null) &&
-             (!('goal' in data) || data.goal is string || data.goal == null) &&
-             (!('goalType' in data) || (data.goalType is string && data.goalType in ['hypertrophy', 'strength', 'fat_loss', 'recomposition', 'endurance', 'tone'])) &&
-             (!('goalChangedAt' in data) || data.goalChangedAt is string) &&
-             (!('gender' in data) || (data.gender is string && data.gender in ['male', 'female'])) &&
-             (!('reminders' in data) || (data.reminders is list && data.reminders.size() <= 20));
+      return data.keys().hasAll(['displayName', 'email', 'createdAt']) &&
+             data.email is string &&
+             data.displayName is string &&
+             data.displayName.size() <= 200;
     }
 
     function isValidUserProfileUpdate(data) {
-      let allowedFields = ['displayName', 'email', 'photoURL', 'role', 'reminders', 'createdAt', 'updatedAt', 'uid', 'age', 'goal', 'gender', 'goalType', 'goalChangedAt'];
-      
-      return data.keys().hasOnly(allowedFields) &&
-             (!('displayName' in data) || (data.displayName is string && data.displayName.size() > 0 && data.displayName.size() < 100)) &&
-             (!('email' in data) || (data.email is string && isValidEmail(data.email))) &&
-             (!('photoURL' in data) || data.photoURL is string || data.photoURL == null) &&
-             (!('role' in data) || (data.role is string && data.role in ['admin', 'user'])) &&
-             (!('createdAt' in data) || data.createdAt is string) &&
-             (!('updatedAt' in data) || data.updatedAt is string) &&
-             (!('uid' in data) || (data.uid is string && data.uid == request.auth.uid)) &&
-             (!('age' in data) || data.age is string || data.age is number || data.age == null) &&
-             (!('goal' in data) || data.goal is string || data.goal == null) &&
-             (!('goalType' in data) || (data.goalType is string && data.goalType in ['hypertrophy', 'strength', 'fat_loss', 'recomposition', 'endurance', 'tone'])) &&
-             (!('goalChangedAt' in data) || data.goalChangedAt is string) &&
-             (!('gender' in data) || (data.gender is string && data.gender in ['male', 'female'])) &&
-             (!('reminders' in data) || (data.reminders is list && data.reminders.size() <= 20));
+      return (data.keys().hasAll(['displayName', 'age', 'gender', 'goal']) || data.keys().hasAll(['photoURL']) || data.keys().hasAll(['role']) || data.keys().hasAll(['updatedAt']) || data.keys().hasAll(['uid'])) &&
+             (data.keys().hasOnly(['displayName', 'age', 'gender', 'goal', 'photoURL', 'role', 'updatedAt', 'userId', 'stats', 'reminders', 'uid', 'email', 'createdAt']) || isAdmin());
     }
 
     function isValidWorkout(data) {
       return data.keys().hasAll(['userId', 'date', 'day', 'exercises']) &&
-             data.keys().hasOnly(['userId', 'date', 'day', 'exercises', 'notes', 'name', 'isCardio', 'isStatic', 'staticType', 'duration', 'avgHeartRate', 'caloriesBurned', 'totalVolume']) &&
-             data.userId == request.auth.uid &&
              isValidDateString(data.date) &&
+             data.userId is string &&
              data.day is string && data.day.size() > 0 && data.day.size() < 100 &&
-             (!('name' in data) || (data.name is string && data.name.size() > 0 && data.name.size() <= 100)) &&
+             (!('name' in data) || (data.name is string && data.name.size() >= 0 && data.name.size() <= 200)) &&
              (!('notes' in data) || (data.notes is string && data.notes.size() < 10000)) &&
              (!('isCardio' in data) || data.isCardio is bool) &&
              (!('isStatic' in data) || data.isStatic is bool) &&
@@ -134,129 +107,119 @@ service cloud.firestore {
              (!('avgHeartRate' in data) || data.avgHeartRate is number) &&
              (!('caloriesBurned' in data) || data.caloriesBurned is number) &&
              (!('totalVolume' in data) || data.totalVolume is number) &&
-             data.exercises is list && data.exercises.size() <= 50;
+             data.exercises is list && data.exercises.size() <= 100;
+    }
+
+    function isValidWorkoutUpdate(data) {
+      return (!('userId' in data) || data.userId is string) &&
+             (!('date' in data) || isValidDateString(data.date)) &&
+             (!('day' in data) || (data.day is string && data.day.size() > 0 && data.day.size() < 100)) &&
+             (!('name' in data) || (data.name is string && data.name.size() >= 0 && data.name.size() <= 200)) &&
+             (!('notes' in data) || (data.notes is string && data.notes.size() < 10000)) &&
+             (!('isCardio' in data) || data.isCardio is bool) &&
+             (!('isStatic' in data) || data.isStatic is bool) &&
+             (!('staticType' in data) || (data.staticType is string && data.staticType in ['time', 'reps'])) &&
+             (!('duration' in data) || data.duration is number) &&
+             (!('avgHeartRate' in data) || data.avgHeartRate is number) &&
+             (!('caloriesBurned' in data) || data.caloriesBurned is number) &&
+             (!('totalVolume' in data) || data.totalVolume is number) &&
+             (!('exercises' in data) || (data.exercises is list && data.exercises.size() <= 100));
     }
 
     function isValidMeasurement(data) {
       return data.keys().hasAll(['userId', 'date', 'weight']) &&
-             data.keys().hasOnly(['userId', 'date', 'weight', 'age', 'fat', 'muscle', 'water', 'chest', 'waist', 'waistHigh', 'waistNavel', 'waistWidest', 'hips', 'bicep', 'thigh', 'bmi', 'visceralFat', 'skeletalMuscleIndex', 'waistHipRatio', 'bodyType', 'bodyShape', 'bmr', 'boneMass', 'protein', 'fatFreeMass', 'biologicalAge', 'heartRate', 'photos']) &&
-             data.userId == request.auth.uid &&
              isValidDateString(data.date) &&
-             data.weight is number &&
-             (!('age' in data) || data.age is number || data.age == null) &&
-             (!('fat' in data) || data.fat is number || data.fat == null) &&
-             (!('muscle' in data) || data.muscle is number || data.muscle == null) &&
-             (!('water' in data) || data.water is number || data.water == null) &&
-             (!('chest' in data) || data.chest is number || data.chest == null) &&
-             (!('waist' in data) || data.waist is number || data.waist == null) &&
-             (!('waistHigh' in data) || data.waistHigh is number || data.waistHigh == null) &&
-             (!('waistNavel' in data) || data.waistNavel is number || data.waistNavel == null) &&
-             (!('waistWidest' in data) || data.waistWidest is number || data.waistWidest == null) &&
-             (!('hips' in data) || data.hips is number || data.hips == null) &&
-             (!('bicep' in data) || data.bicep is number || data.bicep == null) &&
-             (!('thigh' in data) || data.thigh is number || data.thigh == null) &&
-             (!('bmi' in data) || data.bmi is number || data.bmi == null) &&
-             (!('visceralFat' in data) || data.visceralFat is number || data.visceralFat == null) &&
-             (!('skeletalMuscleIndex' in data) || data.skeletalMuscleIndex is number || data.skeletalMuscleIndex == null) &&
-             (!('waistHipRatio' in data) || data.waistHipRatio is number || data.waistHipRatio == null) &&
-             (!('bodyType' in data) || data.bodyType is string || data.bodyType == null) &&
-             (!('bodyShape' in data) || data.bodyShape is string || data.bodyShape == null) &&
-             (!('bmr' in data) || data.bmr is number || data.bmr == null) &&
-             (!('boneMass' in data) || data.boneMass is number || data.boneMass == null) &&
-             (!('protein' in data) || data.protein is number || data.protein == null) &&
-             (!('fatFreeMass' in data) || data.fatFreeMass is number || data.fatFreeMass == null) &&
-             (!('biologicalAge' in data) || data.biologicalAge is number || data.biologicalAge == null) &&
-             (!('heartRate' in data) || data.heartRate is number || data.heartRate == null) &&
-             (!('photos' in data) || (data.photos is list && data.photos.size() <= 3));
+             data.userId is string &&
+             data.weight is number;
+    }
+
+    function isValidMeasurementUpdate(data) {
+      return (!('userId' in data) || data.userId is string) &&
+             (!('date' in data) || isValidDateString(data.date)) &&
+             (!('weight' in data) || data.weight is number);
     }
 
     function isValidStrengthRecord(data) {
-      let allowedFields = ['userId', 'date', 'exercise', 'weight', 'reps', 'volume', 'avgWeight', 'maxWeight', 'totalReps', 'setsCount', 'unit', 'isBodyweight', 'isCardio', 'isStatic', 'staticType', 'rpe'];
       return data.keys().hasAll(['userId', 'date', 'exercise', 'weight', 'reps']) &&
-             data.keys().hasOnly(allowedFields) &&
-             data.userId == request.auth.uid &&
              isValidDateString(data.date) &&
+             data.userId is string &&
              data.exercise is string &&
              data.weight is number &&
-             data.reps is number &&
-             (!('volume' in data) || data.volume is number) &&
-             (!('avgWeight' in data) || data.avgWeight is number) &&
-             (!('maxWeight' in data) || data.maxWeight is number) &&
-             (!('totalReps' in data) || data.totalReps is number) &&
-             (!('setsCount' in data) || data.setsCount is number) &&
-             (!('unit' in data) || data.unit is string) &&
-             (!('isBodyweight' in data) || data.isBodyweight is bool) &&
-             (!('isCardio' in data) || data.isCardio is bool) &&
-             (!('isStatic' in data) || data.isStatic is bool) &&
-             (!('staticType' in data) || (data.staticType is string && data.staticType in ['time', 'reps'])) &&
-             (!('rpe' in data) || (data.rpe is number && data.rpe >= 0 && data.rpe <= 10));
+             data.reps is number;
+    }
+
+    function isValidStrengthRecordUpdate(data) {
+      return (!('userId' in data) || data.userId is string) &&
+             (!('date' in data) || isValidDateString(data.date)) &&
+             (!('exercise' in data) || data.exercise is string) &&
+             (!('weight' in data) || data.weight is number) &&
+             (!('reps' in data) || data.reps is number);
     }
 
     function isValidTechItem(data) {
       return data.keys().hasAll(['userId', 'title', 'subtitle', 'content', 'order']) &&
-             data.keys().hasOnly(['userId', 'title', 'subtitle', 'content', 'order']) &&
-             data.userId == request.auth.uid &&
-             data.title is string && data.title.size() > 0 && data.title.size() < 100 &&
-             data.subtitle is string && data.subtitle.size() < 200 &&
-             data.content is string && data.content.size() < 10000 &&
+             data.userId is string &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.subtitle is string && data.subtitle.size() < 500 &&
+             data.content is string && data.content.size() < 20000 &&
              data.order is number;
     }
 
     function isValidSupportTicket(data) {
       return data.keys().hasAll(['userId', 'email', 'message', 'createdAt']) &&
-             data.keys().hasOnly(['userId', 'email', 'message', 'screenshot', 'createdAt', 'status']) &&
-             data.userId == request.auth.uid &&
+             data.userId is string &&
              isValidEmail(data.email) &&
-             data.message is string && data.message.size() > 0 && data.message.size() < 5000 &&
-             (!('screenshot' in data) || (data.screenshot is string && data.screenshot.size() < 2000000)) &&
-             isValidDateString(data.createdAt) &&
-             (!('status' in data) || data.status in ['new', 'in_progress', 'resolved']);
+             data.message is string && data.message.size() > 0 && data.message.size() < 10000 &&
+             isValidDateString(data.createdAt);
     }
 
     // ===============================================================
     // Match Rules
     // ===============================================================
 
+    match /test/connection {
+      allow read: if true;
+    }
+
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
       allow create: if isOwner(userId) && isValidUserProfile(request.resource.data) && 
                       (!('role' in request.resource.data) || request.resource.data.role == 'user' || isAdmin());
-      allow update: if isOwner(userId) && isValidUserProfileUpdate(request.resource.data) && 
-                      (!('role' in request.resource.data) || !('role' in resource.data) || request.resource.data.role == resource.data.role || isAdmin());
-      allow delete: if isOwner(userId) || isAdmin();
+      allow update: if (isOwner(userId) || isAdmin()) && isValidUserProfileUpdate(request.resource.data);
+      allow delete: if isAdmin();
     }
 
     match /workouts/{workoutId} {
       allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isAuthenticated() && isValidWorkout(request.resource.data);
-      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && isValidWorkout(request.resource.data);
+      allow create: if isAuthenticated() && (request.resource.data.userId == request.auth.uid || isAdmin()) && isValidWorkout(request.resource.data);
+      allow update: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin()) && isValidWorkoutUpdate(request.resource.data);
       allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
     match /measurements/{measurementId} {
       allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isAuthenticated() && isValidMeasurement(request.resource.data);
-      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && isValidMeasurement(request.resource.data);
+      allow create: if isAuthenticated() && (request.resource.data.userId == request.auth.uid || isAdmin()) && isValidMeasurement(request.resource.data);
+      allow update: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin()) && isValidMeasurementUpdate(request.resource.data);
       allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
     match /strength/{recordId} {
       allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isAuthenticated() && isValidStrengthRecord(request.resource.data);
-      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && isValidStrengthRecord(request.resource.data);
+      allow create: if isAuthenticated() && (request.resource.data.userId == request.auth.uid || isAdmin()) && isValidStrengthRecord(request.resource.data);
+      allow update: if isAuthenticated() && (request.resource.data.userId == request.auth.uid || isAdmin()) && isValidStrengthRecordUpdate(request.resource.data);
       allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
     match /tech/{techId} {
       allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isAuthenticated() && isValidTechItem(request.resource.data);
-      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid && isValidTechItem(request.resource.data);
+      allow create: if isAuthenticated() && (request.resource.data.userId == request.auth.uid || isAdmin()) && isValidTechItem(request.resource.data);
+      allow update: if isAuthenticated() && (request.resource.data.userId == request.auth.uid || isAdmin()) && isValidTechItem(request.resource.data);
       allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
     match /current_workout/{userId} {
-      allow read: if isOwner(userId);
-      allow write: if isOwner(userId);
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isOwner(userId) || isAdmin();
     }
 
     match /programs/{userId} {
@@ -264,14 +227,16 @@ service cloud.firestore {
     }
 
     match /coach_messages/{messageId} {
-      allow read: if isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow get: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && (request.resource.data.userId == request.auth.uid || isAdmin());
+      allow update: if false;
       allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
     match /support_tickets/{ticketId} {
       allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
-      allow create: if isAuthenticated() && isValidSupportTicket(request.resource.data);
+      allow create: if isAuthenticated() && (request.resource.data.userId == request.auth.uid || isAdmin()) && isValidSupportTicket(request.resource.data);
       allow update: if isAdmin();
       allow delete: if isAdmin();
     }

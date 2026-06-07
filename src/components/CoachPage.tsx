@@ -479,9 +479,9 @@ update_tech_data — заполни технику
       const dataContext = `
         ПЕРЕМЕННЫЕ ПОЛЬЗОВАТЕЛЯ (ДЛЯ АНАЛИЗА):
         - ПРОФИЛЬ: ${JSON.stringify(userProfile)}
-        - ТРЕНИРОВКИ: ${JSON.stringify(workouts.slice(-10))}
-        - ЗАМЕРЫ: ${JSON.stringify(measurements.slice(-10))}
-        - СИЛОВЫЕ РЕКОРДЫ: ${JSON.stringify(strengthRecords.slice(-20))}
+        - ТРЕНИРОВКИ: ${JSON.stringify(workouts?.[0] ? workouts.slice(0, 50) : [])}
+        - ЗАМЕРЫ: ${JSON.stringify(measurements?.[0] ? measurements.slice(0, 30) : [])}
+        - СИЛОВЫЕ РЕКОРДЫ: ${JSON.stringify(strengthRecords?.[0] ? strengthRecords.slice(0, 50) : [])}
         - ТЕКУЩАЯ ПРОГРАММА: ${JSON.stringify(programData)}
         - ТЕХНИКА ВЫПОЛНЕНИЯ: ${JSON.stringify(techData)}
       `;

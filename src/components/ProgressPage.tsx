@@ -415,6 +415,108 @@ export function ProgressPage({
     };
   }, [workouts, measurements, userProfile]);
 
+  const weeklyFormIndex = useMemo(() => {
+    const now = new Date();
+    const weekStart = startOfWeek(now, { weekStartsOn: 1 });
+    const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
+
+    const strengthWorkouts = workouts
+      .filter(w => {
+        const d = new Date(w.date);
+        if (!isWithinInterval(d, { start: weekStart, end: weekEnd })) return false;
+
+        const isCardioWorkout =
+          w.isCardio ||
+          programData[w.day]?.isCardio ||
+          w.exercises?.some(ex => ex.isCardio);
+
+        return !isCardioWorkout;
+      })
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    const events = strengthWorkouts.map((w, index) => {
+      let points = 0;
+      let message = '';
+
+      if (index === 0) {
+        points = 35;
+        message = '+35 к Индексу формы. Неделя запущена.';
+      } else if (index === 1) {
+        points = 35;
+        message = '+35. Базовый результат недели закрыт.';
+      } else if (index === 2) {
+        points = 18;
+        message = '+18. Усиление формы.';
+      } else if (index === 3) {
+        points = 7;
+        message = '+7. Основной план недели закрыт.';
+      } else if (index === 4) {
+        points = 2;
+        message = '+2. Дополнительная силовая.';
+      } else {
+        points = 0;
+        message = 'Максимум достигнут.';
+      }
+
+      return {
+        id: w.id || w.date,
+        date: w.date,
+        day: w.day,
+        points,
+        message
+      };
+    });
+
+    const totalPoints = Math.min(
+      events.reduce((sum, item) => sum + item.points, 0),
+      100
+    );
+
+    const actual1 = strengthWorkouts.length >= 1 ? 35 : null;
+    const actual2 = strengthWorkouts.length >= 2 ? 70 : null;
+    const actual3 = strengthWorkouts.length >= 3 ? 88 : null;
+    const actual4 = strengthWorkouts.length >= 4 ? 95 : null;
+    const actual5 = strengthWorkouts.length >= 5 ? 97 : null;
+
+    const chartData = [
+      { step: 'Старт', plan: 0, actual: 0 },
+      { step: '1-я', plan: 35, actual: actual1 },
+      { step: '2-я', plan: 70, actual: actual2 },
+      { step: '3-я', plan: 88, actual: actual3 },
+      { step: '4-я', plan: 95, actual: actual4 },
+      { step: '5-я', plan: 97, actual: actual5 }
+    ];
+
+    let summary = 'Первая силовая запустит неделю.';
+    let lastMessage = summary;
+
+    if (strengthWorkouts.length === 1) {
+      summary = '+35 к Индексу формы. Неделя запущена.';
+      lastMessage = events[0]?.message || summary;
+    } else if (strengthWorkouts.length === 2) {
+      summary = '2 силовые выполнены. Минимально эффективная неделя закрыта.';
+      lastMessage = events[1]?.message || '+35. Базовый результат недели закрыт.';
+    } else if (strengthWorkouts.length === 3) {
+      summary = '3 силовые выполнены. Усиление формы активировано.';
+      lastMessage = events[2]?.message || '+18. Усиление формы.';
+    } else if (strengthWorkouts.length === 4) {
+      summary = '4 силовые выполнены. Основной план недели закрыт.';
+      lastMessage = events[3]?.message || '+7. Основной план недели закрыт.';
+    } else if (strengthWorkouts.length >= 5) {
+      summary = '5 силовых выполнены. Максимальная отдача!';
+      lastMessage = events[4]?.message || '+2. Дополнительная силовая.';
+    }
+
+    return {
+      strengthCount: strengthWorkouts.length,
+      totalPoints,
+      chartData,
+      summary,
+      lastMessage,
+      events
+    };
+  }, [workouts, programData]);
+
   return (
     <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 pb-24">
       {/* Pill Switcher */}
@@ -447,6 +549,109 @@ export function ProgressPage({
               <StatItem value={stats.total} label="всего" />
               <StatItem value={stats.thisMonth} label="в месяце" />
               <StatItem value={stats.streak} label="недель" />
+            </div>
+
+            {/* Weekly Form Index Chart */}
+            <div className="bg-surface border-2 border-accent/20 rounded-3xl p-5 shadow-sm space-y-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h4 className="text-[10px] text-muted uppercase font-bold tracking-widest mb-1">
+                    Индекс формы недели
+                  </h4>
+                  <div className="text-3xl font-display font-bold text-accent leading-none">
+                    {weeklyFormIndex.totalPoints}
+                    <span className="text-sm text-muted ml-1">/ 100</span>
+                  </div>
+                </div>
+
+                <div className="w-14 h-14 rounded-2xl bg-accent/10 flex items-center justify-center text-accent">
+                  <Trophy size={28} />
+                </div>
+              </div>
+
+              <div className="h-[170px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={weeklyFormIndex.chartData}
+                    margin={{ top: 10, right: 8, left: -24, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.25} />
+                    <XAxis
+                      dataKey="step"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fontSize: 10, fontWeight: 'bold', fill: 'var(--color-muted)' }}
+                    />
+                    <YAxis hide domain={[0, 100]} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: 'var(--color-surface)',
+                        borderRadius: '12px',
+                        border: '2px solid var(--color-border)',
+                        fontSize: '10px',
+                        fontWeight: 'bold'
+                      }}
+                      formatter={(value: any, name: any) => [
+                        `${value} баллов`,
+                        name === 'actual' ? 'Факт' : 'План'
+                      ]}
+                    />
+
+                    <Area
+                      type="monotone"
+                      dataKey="plan"
+                      stroke="var(--color-border)"
+                      fill="var(--color-border)"
+                      fillOpacity={0.18}
+                      strokeWidth={2}
+                      strokeDasharray="5 5"
+                      dot={false}
+                      isAnimationActive={false}
+                    />
+
+                    <Area
+                      type="monotone"
+                      dataKey="actual"
+                      stroke="var(--color-accent)"
+                      fill="var(--color-accent)"
+                      fillOpacity={0.22}
+                      strokeWidth={4}
+                      connectNulls={false}
+                      animationDuration={900}
+                      dot={{
+                        r: 4,
+                        fill: 'var(--color-accent)',
+                        stroke: 'var(--color-surface)',
+                        strokeWidth: 2
+                      }}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="bg-accent/10 border border-accent/20 rounded-2xl p-3">
+                <p className="text-sm font-bold text-accent">
+                  {weeklyFormIndex.summary}
+                </p>
+                <p className="text-xs text-muted mt-1">
+                  {weeklyFormIndex.lastMessage}
+                </p>
+              </div>
+
+              {weeklyFormIndex.events.length > 0 && (
+                <div className="space-y-2 pt-1">
+                  {weeklyFormIndex.events.slice(-3).map((event) => (
+                    <div key={event.id} className="flex justify-between items-center text-xs">
+                      <span className="text-muted">
+                        {format(new Date(event.date), 'd MMM', { locale: ru })} · {event.day}
+                      </span>
+                      <span className="font-bold text-accent">
+                        +{event.points}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Activity Chart or Motivational Card */}

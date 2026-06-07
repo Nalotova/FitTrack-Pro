@@ -1,213 +1,85 @@
-# FitTrack Pro
+# FitTrack Pro: Agentic AI Fitness Coach
 
-An AI-powered fitness tracking app with an embedded coaching agent that can analyze progress, adapt training programs, update exercise technique guidance, and record body measurements directly inside the application.
+## 🎯 Overview
+FitTrack Pro is not a generic public SaaS fitness tracker. It is a highly personalized, autonomous **Agentic AI system** designed to act as an elite biomechanics and strength programming coach. Built with React, Firebase, and the Gemini API, the system creates a closed-loop feedback cycle: it absorbs user biometric and training data, analyzes progress in real-time, and autonomously updates the underlying training program and biomechanical cues through structured function calling.
 
-FitTrack Pro is more than a workout diary. It combines workout logging, body composition tracking, strength analytics, Firebase persistence, and a Gemini-powered assistant that works with the user's real training context.
+## 🧠 Core Architecture: The Agentic Workflow
+The true power of this system lies in its agentic nature. Rather than just acting as a conversational chatbot, the Gemini AI operates as a stateful controller with direct access to the user's database.
 
-## Project Highlights
+1. **Input & Contextualization:** The application state (Firebase Firestore) continuously aggregates the user's workout logs, strength records (1RMs, volume thresholds), body measurements, and technical execution notes.
+2. **Analysis:** When the user interacts with the AI Coach, the system serializes up to the last 50 workouts, 30 measurements, and 50 strength records into a dense JSON payload, which is injected directly into the LLM's system prompt context. 
+3. **Execution (Function Calling):** Based on the deep analysis of this data, the AI determines if intervention is required. Through structured tool calling, the agent can autonomously:
+   - `update_program`: Mutate the JSON schema of the user's current training macrocycle (adjusting sets, reps, RPE, or prescribing new exercises based on periodization).
+   - `update_technique`: Update the individual biomechanical focus points and cues for specific exercises in the user's knowledge base.
+   - `update_profile`: Modify broad user goals (e.g., smoothly transitioning from 'hypertrophy' to 'strength' blocks).
+   - `save_measurement`: Log new biometrics inferred from conversation or parsed from uploaded progress images.
+4. **Feedback Loop:** The UI executes these structural mutations against the Firestore database and feeds the confirmation matrix back to the agent without breaking the conversation flow.
 
-- AI fitness coach embedded inside the product, not just a chatbot
-- Agent-style actions: update workout programs, create technique cards, and save measurements
-- Workout, strength, weight, and body composition tracking in one interface
-- Firebase authentication, Firestore realtime data, and Storage integration
-- Progress dashboards with charts and workout history
-- PWA-oriented mobile experience with theme support
-- Multimodal coach input: text, images/files, and voice messages
+## 🛠️ Tech Stack
+* **Frontend:** React, TypeScript, Tailwind CSS, Vite, Framer Motion
+* **Backend & State:** Firebase Auth, Cloud Firestore (with strict schema-validating Security Rules), Firebase Storage
+* **Agent Intelligence:** Google Gemini API (`@google/genai`), utilizing `gemini-2.5-pro` for deep reasoning, multi-modal analysis (audio/vision), and structured JSON output.
+* **Component Library:** Headless UI patterns implemented with Tailwind.
 
-## Core Idea
+## ⚙️ Technical Overview & Agent Logic
 
-Most fitness apps only store what the user enters. FitTrack Pro adds an AI layer that can reason over the user's profile, workout history, strength records, body measurements, and uploaded media.
+The local application state is synchronized with Firestore via active real-time listeners (`onSnapshot`). 
 
-The coach can then respond with advice or perform structured actions inside the app, such as replacing the training program or adding new body measurement records.
+### The Gemini Integration & Prompt Engineering
+When the user sends a message (or audio clip, or image), the front-end constructs an expansive context window. The agent logic works by prepending a strict system instruction detailing its persona (an elite Russian-speaking biomechanics coach) and injecting the exact user state:
 
-## Key Features
-
-### Workout Tracking
-
-- Daily workout view with configurable training days
-- Exercise sets, reps, weights, RPE, notes, cardio, and bodyweight/static exercise support
-- Workout completion flow that saves history and moves the user to the next training day
-- Automatic strength record extraction from completed workouts
-- Current workout state persistence so the user can continue later
-
-### AI Coach Agent
-
-The coach uses Google Gemini and receives structured context from the app:
-
-- User profile and goal type
-- Current training program
-- Workout history
-- Strength records
-- Body measurements and progress data
-- Technique reference cards
-- Uploaded photos, screenshots, documents, or audio messages
-
-The agent can call internal app tools to:
-
-- `update_training_program` - replace the user's training plan with a structured program
-- `update_tech_data` - create or update exercise technique guidance
-- `add_bioimpedance_measurement` - save body composition and measurement data
-
-This turns the assistant from a passive chat into an action-capable product feature.
-
-### Progress Analytics
-
-- Weight and body composition tracking
-- Strength records and exercise progress
-- Training volume, reps, and workout history
-- Charts powered by Recharts
-- Goal-aware progress context for the coach
-
-### Technique Library
-
-- Exercise technique cards with movement cues
-- AI-generated technique guidance after program creation
-- Manual editing support for technique content
-
-### Authentication and Persistence
-
-- Google sign-in via Firebase Auth
-- Firestore collections for workouts, measurements, strength records, program data, coach messages, and technique cards
-- Firebase Storage support for uploaded media
-- Offline/online state awareness and Firestore error handling
-
-## Tech Stack
-
-| Area | Technologies |
-| --- | --- |
-| Frontend | React 19, TypeScript, Vite |
-| Styling and UI | Tailwind CSS, Motion, Lucide React |
-| AI | Google Gemini API via `@google/genai` |
-| Auth and Data | Firebase Auth, Firestore, Firebase Storage |
-| Charts | Recharts |
-| Dates | date-fns |
-| Markdown | react-markdown |
-| App Experience | PWA manifest, responsive/mobile-first UI, dark/light theme |
-
-## Architecture
-
-```text
-React / Vite App
-  |
-  |-- Workout UI
-  |-- Progress dashboards
-  |-- Strength and body measurement tracking
-  |-- Technique library
-  |-- AI Coach chat
-        |
-        | sends structured context + user message + media
-        v
-Google Gemini
-  |
-  |-- text response
-  |-- function calls for app actions
-        |
-        |-- update_training_program
-        |-- update_tech_data
-        |-- add_bioimpedance_measurement
-        v
-Firebase
-  |
-  |-- Auth: Google login
-  |-- Firestore: user data, workouts, measurements, messages
-  |-- Storage: uploaded media
+```typescript
+const dataContext = `
+  ПЕРЕМЕННЫЕ ПОЛЬЗОВАТЕЛЯ (ДЛЯ АНАЛИЗА):
+  - ПРОФИЛЬ: ${JSON.stringify(userProfile)}
+  - ТРЕНИРОВКИ: ${JSON.stringify(workouts.slice(0, 50))}
+  - ЗАМЕРЫ: ${JSON.stringify(measurements.slice(0, 30))}
+  - СИЛОВЫЕ РЕКОРДЫ: ${JSON.stringify(strengthRecords.slice(0, 50))}
+  - ТЕКУЩАЯ ПРОГРАММА: ${JSON.stringify(programData)}
+  - ТЕХНИКА ВЫПОЛНЕНИЯ: ${JSON.stringify(techData)}
+`;
 ```
 
-## What I Built
+The model is equipped with a `tools` array containing OpenAPI-style schemas for database mutations. If the model determines that a user's bench press is stalling (based on the `strengthRecords` JSON), it will formulate a response explaining the plateau, and simultaneously emit a function call to `update_program` to increase volume or swap in an accessory lift.
 
-- Designed a fitness app around real user workflows: training today, tracking progress, reviewing history, and adjusting goals
-- Implemented workout logging with different exercise types: strength, cardio, bodyweight, and static holds
-- Built a Gemini-powered coach that can use app context and trigger structured updates inside the product
-- Integrated Firebase Auth, Firestore realtime listeners, and Storage-based media handling
-- Created progress views for body metrics, workout history, strength records, and charts
-- Added persistent coach messages, current workout state, theme settings, and PWA metadata
-- Implemented program and technique editors so AI-generated content remains editable by the user
+The React client listens for `functionCall` parts in the Gemini response, parses the structured JSON arguments, validates them, commits the transaction to Firestore, and appends a `functionResponse` back to the conversation history. This allows the AI to "know" that its prescribed changes were successfully saved to the user's database.
 
-## Why This Project Matters
+## 🚀 Quick Start (Development)
 
-FitTrack Pro demonstrates product engineering around an AI agent that is connected to application state. The AI feature is not isolated from the product: it reads the user's data, reasons about goals and progress, and can modify the app's structured records.
+To run this project locally, you need a configured Firebase project and a Gemini API key.
 
-For recruiters, this project shows experience with:
+1. **Clone the repository:**
+   ```bash
+   git clone <repository-url>
+   cd fittrack-pro
+   ```
+2. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+3. **Configure Environment Variables:**
+   Create a `.env.example` file in the root directory and configure accordingly:
+   ```env
+   VITE_FIREBASE_API_KEY=your_firebase_api_key
+   VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+   VITE_FIREBASE_PROJECT_ID=your_project_id
+   VITE_FIREBASE_STORAGE_BUCKET=your_workspace.firebasestorage.app
+   VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+   VITE_FIREBASE_APP_ID=your_app_id
+   VITE_GEMINI_API_KEY=your_gemini_api_key
+   ```
+4. **Deploy Firestore Rules:**
+   Ensure database security by deploying the highly strict rules defined in `firestore.rules`:
+   ```bash
+   firebase deploy --only firestore:rules
+   ```
+5. **Run the Development Server:**
+   ```bash
+   npm run dev
+   ```
 
-- Building a large React/TypeScript single-page application
-- Designing an AI-assisted user workflow with tool/function calling
-- Integrating Firebase authentication and realtime persistence
-- Modeling structured fitness data and progress analytics
-- Handling user-generated media and multimodal AI inputs
-- Turning AI output into editable, persistent product state
+## 🔐 Security & Data Privacy
+Since this is a deeply personalized agent handling sensitive biometric data, security is foundational. The system implements a robust set of Firestore Security Rules, completely locking down read and write operations. Every collection (`workouts`, `measurements`, `strength`, `programs`, `tech`, `users`) restricts access strictly to the authenticated `request.auth.uid`. Furthermore, complex schema validations (e.g., `isValidWorkoutUpdate`) are performed at the database level to ensure that even if the AI hallucinates, it cannot corrupt the database schema.
 
-## Getting Started
-
-### Prerequisites
-
-- Node.js 18+
-- Firebase project with Auth, Firestore, and Storage configured
-- Google Gemini API key
-
-### Installation
-
-```bash
-npm install
-```
-
-### Environment Variables
-
-Create a `.env.local` file in the project root:
-
-```env
-GEMINI_API_KEY=your_gemini_api_key
-GEMINI_API_KEY_2=optional_backup_key
-```
-
-Firebase configuration is loaded from `firebase-applet-config.json`.
-
-### Run Locally
-
-```bash
-npm run dev
-```
-
-The app runs on port `3000` by default.
-
-### Build
-
-```bash
-npm run build
-```
-
-### Type Check
-
-```bash
-npm run lint
-```
-
-## Data Model Overview
-
-The app works with several core entities:
-
-- `UserProfile` - user identity, role, age, gender, goals, reminders
-- `Workout` - completed workout sessions with exercises, sets, cardio data, notes, and volume
-- `StrengthRecord` - best sets and strength progress per exercise
-- `WeightMeasurement` - body weight, body composition, measurements, BMI, photos, and related metrics
-- `TechItem` - technique guidance cards for exercises
-- Coach messages - persistent AI conversation history with optional media attachments
-
-## Privacy and Safety Notes
-
-This app handles personal health and body data. A production version should use strict Firestore security rules, clear consent language, secure media retention policies, and careful handling of AI-generated fitness recommendations.
-
-The AI coach should be treated as a supportive training assistant, not as medical advice or a replacement for a certified fitness or healthcare professional.
-
-## Roadmap
-
-- Add a public demo mode with sample data
-- Add screenshots and a short product walkthrough to this README
-- Move AI requests through a backend proxy for stronger API key protection
-- Add automated tests for core workout and agent flows
-- Add clearer Firebase setup documentation
-- Add export/import flows for user fitness history
-- Improve safety checks for injury, recovery, and overtraining signals
-
-## License
-
-This project contains an Apache-2.0 SPDX header in the source files.
+## 📜 License
+Private proprietary software.

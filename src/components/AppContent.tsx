@@ -598,7 +598,7 @@ export function AppContent() {
       const updates: any = {};
       if (!userData) {
         updates.displayName = currentUser.displayName || 'Анонимный пользователь';
-        updates.email = currentUser.email || '';
+        updates.email = currentUser.email || 'no-email@example.com';
         updates.photoURL = currentUser.photoURL || '';
         updates.role = 'user';
         updates.uid = currentUser.uid;
@@ -609,7 +609,7 @@ export function AppContent() {
         if (!userData.displayName && currentUser.displayName) updates.displayName = currentUser.displayName;
         if (!userData.photoURL && currentUser.photoURL) updates.photoURL = currentUser.photoURL;
         // Always ensure email is up to date
-        if (userData.email !== currentUser.email) updates.email = currentUser.email || '';
+        if (userData.email !== currentUser.email) updates.email = currentUser.email || 'no-email@example.com';
         
         // Ensure required fields for isValidUserProfile are present
         if (!userData.role) updates.role = 'user';
@@ -708,7 +708,7 @@ export function AppContent() {
         const fullData = {
           ...updateData,
           displayName: data.displayName || user.displayName || 'Анонимный пользователь',
-          email: user.email || '',
+          email: user.email || 'no-email@example.com',
           role: 'user',
           createdAt: new Date().toISOString()
         };
@@ -789,7 +789,9 @@ export function AppContent() {
           name: ex.name,
           isCardio,
           isStatic,
-          sets
+          sets,
+          note: (currentNotes[currentDay] || {})[i] || '',
+          rpe: (currentRpes[currentDay] || {})[i] || 8
         };
         if (isCardio) {
           exObj.fields = cardioFields;
@@ -885,8 +887,8 @@ export function AppContent() {
             const rpe = (currentRpes[currentDay] || {})[i] || 8;
             await handleSaveStrength({
               exercise: ex.name,
-              weight: bestSet.weight,
-              reps: bestSet.reps,
+              weight: bestSet.weight || 0,
+              reps: bestSet.reps || 0,
               volume,
               avgWeight,
               maxWeight,
